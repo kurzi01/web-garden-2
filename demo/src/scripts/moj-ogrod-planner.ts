@@ -2,6 +2,7 @@ type Season = 'spring' | 'summer' | 'autumn' | 'winter';
 type Sun = 'sun' | 'partial' | 'shade';
 type Moisture = 'dry' | 'normal' | 'moist';
 type SoilPh = 'acid' | 'neutral' | 'alkaline';
+type FrontEdge = 'top' | 'bottom' | 'left' | 'right';
 
 type PlantState = {
   id: string;
@@ -12,6 +13,9 @@ type PlantState = {
   y: number;
   spacing: number;
   height: number;
+  spread: number;
+  bloomMonths: number[];
+  evergreen: boolean;
   seasons: Season[];
   sun: Sun[];
   moisture: Moisture[];
@@ -29,6 +33,7 @@ type BedState = {
   sun: Sun;
   moisture: Moisture;
   ph: SoilPh;
+  frontEdge: FrontEdge;
 };
 
 type Selection = { type: 'plant' | 'bed'; id: string } | null;
@@ -36,6 +41,8 @@ type Selection = { type: 'plant' | 'bed'; id: string } | null;
 type PlannerState = {
   zoom: number;
   snap: boolean;
+  growthYear: number;
+  currentMonth: number;
   plants: PlantState[];
   beds: BedState[];
   selected: Selection;
@@ -46,8 +53,8 @@ type FitResult = {
   issues: string[];
 };
 
-const STORAGE_KEY = 'moj-ogrod-planner-v4';
-const LEGACY_STORAGE_KEY = 'moj-ogrod-planner-v3';
+const STORAGE_KEY = 'moj-ogrod-planner-v5';
+const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
 const SNAP_STEP = 2;
 const HISTORY_LIMIT = 40;
 
@@ -77,14 +84,14 @@ const seasonLabels: Record<Season,string> = {
 };
 
 const catalog: Array<Omit<PlantState,'id'|'x'|'y'>> = [
-  { name:'Hortensja bukietowa', latin:'Hydrangea paniculata', short:'H', spacing:90, height:180, seasons:['summer','autumn'], sun:['sun','partial'], moisture:['normal','moist'], ph:['acid','neutral','alkaline'], soil:'żyzna, próchniczna i przepuszczalna' },
-  { name:'Sosna bośniacka Compact Gem', latin:"Pinus heldreichii 'Compact Gem'", short:'S', spacing:120, height:250, seasons:['spring','summer','autumn','winter'], sun:['sun'], moisture:['dry','normal'], ph:['acid','neutral','alkaline'], soil:'przepuszczalna; bez zastoin wody' },
-  { name:'Paproć ogrodowa', latin:'Dryopteris', short:'P', spacing:55, height:90, seasons:['spring','summer','autumn'], sun:['shade','partial'], moisture:['moist'], ph:['acid','neutral','alkaline'], soil:'próchniczna, stale lekko wilgotna' },
-  { name:'Hakonechloa smukła', latin:'Hakonechloa macra', short:'Ha', spacing:50, height:45, seasons:['summer','autumn','winter'], sun:['sun','partial','shade'], moisture:['moist'], ph:['acid','neutral','alkaline'], soil:'próchniczna, żyzna i wilgotna' },
-  { name:'Żurawka', latin:'Heuchera', short:'Ż', spacing:35, height:35, seasons:['spring','summer','autumn','winter'], sun:['partial','shade'], moisture:['normal','moist'], ph:['acid','neutral'], soil:'próchniczna i przepuszczalna' },
-  { name:'Funkia', latin:'Hosta', short:'F', spacing:60, height:60, seasons:['spring','summer','autumn'], sun:['partial','shade'], moisture:['moist'], ph:['acid','neutral','alkaline'], soil:'żyzna, próchniczna i wilgotna' },
-  { name:'Rozplenica japońska', latin:'Pennisetum alopecuroides', short:'R', spacing:70, height:90, seasons:['summer','autumn','winter'], sun:['sun'], moisture:['dry','normal'], ph:['neutral','alkaline'], soil:'przepuszczalna, umiarkowanie żyzna' },
-  { name:'Tawułka Arendsa', latin:'Astilbe × arendsii', short:'T', spacing:45, height:75, seasons:['summer'], sun:['partial','shade'], moisture:['moist'], ph:['acid','neutral'], soil:'żyzna, próchniczna i wilgotna' },
+  { name:'Hortensja bukietowa', latin:'Hydrangea paniculata', short:'H', spacing:90, height:180, spread:180, bloomMonths:[7,8,9,10], evergreen:false, seasons:['summer','autumn'], sun:['sun','partial'], moisture:['normal','moist'], ph:['acid','neutral','alkaline'], soil:'żyzna, próchniczna i przepuszczalna' },
+  { name:'Sosna bośniacka Compact Gem', latin:"Pinus heldreichii 'Compact Gem'", short:'S', spacing:120, height:250, spread:200, bloomMonths:[], evergreen:true, seasons:['spring','summer','autumn','winter'], sun:['sun'], moisture:['dry','normal'], ph:['acid','neutral','alkaline'], soil:'przepuszczalna; bez zastoin wody' },
+  { name:'Paproć ogrodowa', latin:'Dryopteris', short:'P', spacing:55, height:90, spread:75, bloomMonths:[], evergreen:false, seasons:['spring','summer','autumn'], sun:['shade','partial'], moisture:['moist'], ph:['acid','neutral','alkaline'], soil:'próchniczna, stale lekko wilgotna' },
+  { name:'Hakonechloa smukła', latin:'Hakonechloa macra', short:'Ha', spacing:50, height:45, spread:50, bloomMonths:[7,8], evergreen:false, seasons:['summer','autumn','winter'], sun:['sun','partial','shade'], moisture:['moist'], ph:['acid','neutral','alkaline'], soil:'próchniczna, żyzna i wilgotna' },
+  { name:'Żurawka', latin:'Heuchera', short:'Ż', spacing:35, height:35, spread:45, bloomMonths:[5,6,7], evergreen:true, seasons:['spring','summer','autumn','winter'], sun:['partial','shade'], moisture:['normal','moist'], ph:['acid','neutral'], soil:'próchniczna i przepuszczalna' },
+  { name:'Funkia', latin:'Hosta', short:'F', spacing:60, height:60, spread:75, bloomMonths:[7,8,9], evergreen:false, seasons:['spring','summer','autumn'], sun:['partial','shade'], moisture:['moist'], ph:['acid','neutral','alkaline'], soil:'żyzna, próchniczna i wilgotna' },
+  { name:'Rozplenica japońska', latin:'Pennisetum alopecuroides', short:'R', spacing:70, height:90, spread:120, bloomMonths:[8,9,10], evergreen:false, seasons:['summer','autumn','winter'], sun:['sun'], moisture:['dry','normal'], ph:['neutral','alkaline'], soil:'przepuszczalna, umiarkowanie żyzna' },
+  { name:'Tawułka Arendsa', latin:'Astilbe × arendsii', short:'T', spacing:45, height:75, spread:60, bloomMonths:[7,8,9,10], evergreen:false, seasons:['summer'], sun:['partial','shade'], moisture:['moist'], ph:['acid','neutral'], soil:'żyzna, próchniczna i wilgotna' },
 ];
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -101,14 +108,16 @@ const initialPlants: PlantState[] = [
 ];
 
 const initialBeds: BedState[] = [
-  { id:'b1', name:'Rabata frontowa', x:15, y:18, width:31, height:24, sun:'sun', moisture:'normal', ph:'neutral' },
-  { id:'b2', name:'Rabata cienista', x:61, y:20, width:26, height:31, sun:'shade', moisture:'moist', ph:'neutral' },
-  { id:'b3', name:'Rabata przy tarasie', x:24, y:65, width:44, height:20, sun:'partial', moisture:'moist', ph:'neutral' },
+  { id:'b1', name:'Rabata frontowa', x:15, y:18, width:31, height:24, sun:'sun', moisture:'normal', ph:'neutral', frontEdge:'bottom' },
+  { id:'b2', name:'Rabata cienista', x:61, y:20, width:26, height:31, sun:'shade', moisture:'moist', ph:'neutral', frontEdge:'bottom' },
+  { id:'b3', name:'Rabata przy tarasie', x:24, y:65, width:44, height:20, sun:'partial', moisture:'moist', ph:'neutral', frontEdge:'bottom' },
 ];
 
 const defaultState: PlannerState = {
   zoom:1,
   snap:true,
+  growthYear:3,
+  currentMonth:0,
   plants:clone(initialPlants),
   beds:clone(initialBeds),
   selected:{ type:'plant', id:'p1' },
@@ -123,8 +132,11 @@ const normalisePlant = (input: Partial<PlantState> & { name?: string }, index = 
     short: input.short || fallback.short,
     x: Number.isFinite(input.x) ? Number(input.x) : 50,
     y: Number.isFinite(input.y) ? Number(input.y) : 50,
-    spacing: Number.isFinite(input.spacing) ? Number(input.spacing) : fallback.spacing,
-    height: Number.isFinite(input.height) ? Number(input.height) : fallback.height,
+    spacing: Number.isFinite(Number(input.spacing)) ? Number(input.spacing) : fallback.spacing,
+    height: Number.isFinite(Number(input.height)) ? Number(input.height) : fallback.height,
+    spread: Number.isFinite(Number(input.spread)) ? Number(input.spread) : fallback.spread,
+    bloomMonths: Array.isArray(input.bloomMonths) ? input.bloomMonths.map(Number).filter(month=>month>=1&&month<=12) : clone(fallback.bloomMonths),
+    evergreen: typeof input.evergreen === 'boolean' ? input.evergreen : fallback.evergreen,
     seasons: Array.isArray(input.seasons) && input.seasons.length ? input.seasons as Season[] : clone(fallback.seasons),
     sun: Array.isArray(input.sun) && input.sun.length ? input.sun as Sun[] : clone(fallback.sun),
     moisture: Array.isArray(input.moisture) && input.moisture.length ? input.moisture as Moisture[] : clone(fallback.moisture),
@@ -143,16 +155,19 @@ const normaliseBed = (input: Partial<BedState>, index = 0): BedState => ({
   sun: input.sun || 'partial',
   moisture: input.moisture || 'normal',
   ph: input.ph || 'neutral',
+  frontEdge: input.frontEdge || 'bottom',
 });
 
 const loadState = (): PlannerState => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || LEGACY_STORAGE_KEYS.map(key=>localStorage.getItem(key)).find(Boolean);
     if (!raw) return clone(defaultState);
     const parsed = JSON.parse(raw) as Partial<PlannerState>;
     return {
       zoom: clamp(Number(parsed.zoom) || 1, .6, 1.8),
       snap: parsed.snap ?? true,
+      growthYear: clamp(Number(parsed.growthYear) || 3, 1, 5),
+      currentMonth: clamp(Number(parsed.currentMonth) || 0, 0, 12),
       plants: Array.isArray(parsed.plants) ? parsed.plants.map((p,i)=>normalisePlant(p,i)) : clone(initialPlants),
       beds: Array.isArray(parsed.beds) ? parsed.beds.map((b,i)=>normaliseBed(b,i)) : clone(initialBeds),
       selected: parsed.selected ?? null,
@@ -179,6 +194,55 @@ const undoStack: string[] = [];
 const redoStack: string[] = [];
 
 const snap = (v:number) => state.snap ? Math.round(v / SNAP_STEP) * SNAP_STEP : v;
+const growthFactors = [0,.35,.55,.72,.86,1];
+const growthFactor = () => growthFactors[clamp(state.growthYear,1,5)];
+const effectiveSpread = (plant:PlantState) => plant.spread * growthFactor();
+const effectiveHeight = (plant:PlantState) => plant.height * growthFactor();
+
+const plantBackness = (plant:PlantState, bed:BedState) => {
+  const relX=clamp((plant.x-bed.x)/Math.max(1,bed.width),0,1);
+  const relY=clamp((plant.y-bed.y)/Math.max(1,bed.height),0,1);
+  if (bed.frontEdge==='bottom') return 1-relY;
+  if (bed.frontEdge==='top') return relY;
+  if (bed.frontEdge==='left') return relX;
+  return 1-relX;
+};
+
+const layeringScore = (bed:BedState) => {
+  const plants=plantsInBed(bed);
+  if (plants.length < 2) return 100;
+  let comparable=0;
+  let correct=0;
+  for (let i=0;i<plants.length;i++) {
+    for (let j=i+1;j<plants.length;j++) {
+      const a=plants[i], b=plants[j];
+      const heightDiff=effectiveHeight(a)-effectiveHeight(b);
+      const depthDiff=plantBackness(a,bed)-plantBackness(b,bed);
+      if (Math.abs(heightDiff)<5 || Math.abs(depthDiff)<.04) continue;
+      comparable++;
+      if (heightDiff*depthDiff>0) correct++;
+    }
+  }
+  return comparable ? Math.round(correct/comparable*100) : 100;
+};
+
+const repetitionSummary = (bed:BedState) => {
+  const counts=new Map<string,number>();
+  plantsInBed(bed).forEach(p=>counts.set(p.name,(counts.get(p.name)||0)+1));
+  const groups=[...counts.values()].filter(count=>count>=2);
+  const repeated=groups.reduce((sum,count)=>sum+count,0);
+  return {groups:groups.length,repeated};
+};
+
+const bloomContinuity = (bed:BedState) => {
+  const months=new Set<number>();
+  plantsInBed(bed).forEach(p=>p.bloomMonths.forEach(month=>months.add(month)));
+  const core=[3,4,5,6,7,8,9,10];
+  return {
+    active:core.filter(month=>months.has(month)).length,
+    months,
+  };
+};
 
 const scheduleSave = () => {
   const badge = q('[data-save-badge]');
@@ -280,7 +344,7 @@ const getCollisionIds = () => {
     for (let j=i+1; j<state.plants.length; j++) {
       const a = state.plants[i], b = state.plants[j];
       const dist = Math.hypot(a.x-b.x, a.y-b.y);
-      const required = Math.max(4, ((a.spacing+b.spacing)/2)/18);
+      const required = Math.max(3.5, ((effectiveSpread(a)+effectiveSpread(b))/2)/18);
       if (dist < required) {
         ids.add(a.id);
         ids.add(b.id);
@@ -293,7 +357,7 @@ const getCollisionIds = () => {
 const coverageForBed = (bed: BedState) => {
   const plants = plantsInBed(bed);
   if (!plants.length) return 0;
-  const occupied = plants.reduce((sum,p) => sum + Math.PI * Math.pow(Math.max(1.6, p.spacing / 55), 2), 0);
+  const occupied = plants.reduce((sum,p) => sum + Math.PI * Math.pow(Math.max(1.35, effectiveSpread(p) / 65), 2), 0);
   const bedArea = Math.max(1, bed.width * bed.height);
   return Math.round(clamp((occupied / bedArea) * 100, 0, 100));
 };
@@ -306,7 +370,7 @@ const seasonPercent = (plants: PlantState[], season: Season) => {
 const setPlantPosition = (el:HTMLElement,p:PlantState) => {
   el.style.left = `${p.x}%`;
   el.style.top = `${p.y}%`;
-  el.style.setProperty('--spacing-halo', `${Math.round(clamp(p.spacing*.72,50,160))}px`);
+  el.style.setProperty('--spacing-halo', `${Math.round(clamp(effectiveSpread(p)*.68,44,190))}px`);
 };
 
 const setBedGeometry = (el:HTMLElement,b:BedState) => {
@@ -341,6 +405,9 @@ const templateFromLibraryItem = (item:HTMLElement): Omit<PlantState,'id'|'x'|'y'
   short:item.dataset.libraryShort || 'R',
   spacing:Number(item.dataset.librarySpacing || 50),
   height:Number(item.dataset.libraryHeight || 60),
+  spread:Number(item.dataset.librarySpread || item.dataset.librarySpacing || 60),
+  bloomMonths:(item.dataset.libraryBloom || '').split(',').map(Number).filter(month=>month>=1&&month<=12),
+  evergreen:item.dataset.libraryEvergreen === 'true',
   seasons:(item.dataset.librarySeasons || 'summer').split(',') as Season[],
   sun:(item.dataset.librarySun || 'sun,partial,shade').split(',') as Sun[],
   moisture:(item.dataset.libraryMoisture || 'dry,normal,moist').split(',') as Moisture[],
@@ -437,6 +504,10 @@ const renderAnalysis = () => {
     el.classList.toggle('collision', collisions.has(p.id));
     el.classList.toggle('outside-bed', !bed);
     el.classList.toggle('site-mismatch', mismatch);
+    const blooming=state.currentMonth>0 && p.bloomMonths.includes(state.currentMonth);
+    el.classList.toggle('blooming', blooming);
+    el.classList.toggle('season-muted', state.currentMonth>0 && !blooming && !p.evergreen);
+    setPlantPosition(el,p);
     el.dataset.bedName = bed?.name || '';
     if (!bed) outside++;
     if (mismatch) mismatchIds.add(p.id);
@@ -446,7 +517,7 @@ const renderAnalysis = () => {
     const stat = scene.querySelector<HTMLElement>(`[data-bed-stats="${b.id}"]`);
     const condition = scene.querySelector<HTMLElement>(`[data-bed-condition="${b.id}"]`);
     if (stat) stat.textContent = `${plantsInBed(b).length} roślin · ${coverageForBed(b)}% · fit ${bedFitPercent(b)}%`;
-    if (condition) condition.textContent = `${sunLabels[b.sun]} · ${moistureLabels[b.moisture]}`;
+    if (condition) condition.textContent = `${sunLabels[b.sun]} · ${moistureLabels[b.moisture]} · front: ${b.frontEdge}`;
   });
 
   const avgCoverage = state.beds.length
@@ -486,6 +557,52 @@ const renderAnalysis = () => {
     `Pokrycie: ${avgCoverage}%. Stanowisko: ${mismatchCount} niedopasowanych. Poza rabatami: ${outside}. W kolizji: ${collisionCount}.`;
 };
 
+const updateComposition = (bed?:BedState) => {
+  const layering=q('[data-composition-layering]');
+  const rhythm=q('[data-composition-rhythm]');
+  const bloom=q('[data-composition-bloom]');
+  const dominant=q('[data-composition-dominant]');
+  const note=q('[data-composition-note]');
+
+  qa<HTMLElement>('[data-bloom-month]').forEach(cell=>{
+    const month=Number(cell.dataset.bloomMonth);
+    const count=bed ? plantsInBed(bed).filter(p=>p.bloomMonths.includes(month)).length : 0;
+    cell.classList.toggle('active', count>0);
+    cell.classList.toggle('selected', state.currentMonth===month);
+    const bar=cell.querySelector<HTMLElement>('i');
+    if (bar) bar.style.setProperty('--bloom-count', String(Math.min(4,count)));
+    cell.title=count ? `${count} roślin kwitnie` : 'brak kwitnienia';
+  });
+
+  if (!bed) {
+    if (layering) layering.textContent='—';
+    if (rhythm) rhythm.textContent='—';
+    if (bloom) bloom.textContent='—';
+    if (dominant) dominant.textContent='—';
+    if (note) note.textContent='Wybierz rabatę, aby przeanalizować strukturę nasadzeń.';
+    return;
+  }
+
+  const plants=plantsInBed(bed);
+  const layerScore=layeringScore(bed);
+  const repetition=repetitionSummary(bed);
+  const continuity=bloomContinuity(bed);
+  const focal=[...plants].sort((a,b)=>effectiveHeight(b)-effectiveHeight(a))[0];
+
+  if (layering) layering.textContent=`${layerScore}%`;
+  if (rhythm) rhythm.textContent=repetition.groups ? `${repetition.groups} grup · ${repetition.repeated} roślin` : 'brak powtórzeń';
+  if (bloom) bloom.textContent=`${continuity.active}/8 mies. (III–X)`;
+  if (dominant) dominant.textContent=focal ? `${focal.name} · ${Math.round(effectiveHeight(focal))} cm` : '—';
+
+  if (note) {
+    const hints:string[]=[];
+    if (layerScore<65) hints.push('wysokie rośliny warto przesunąć głębiej względem frontu');
+    if (!repetition.groups && plants.length>=4) hints.push('brakuje rytmu wynikającego z powtórzeń');
+    if (continuity.active<4 && plants.length>=3) hints.push('kwitnienie jest skupione w krótkim okresie');
+    note.textContent=hints.length ? hints.join(' · ') : 'Struktura rabaty jest czytelna w zastosowanych heurystykach.';
+  }
+};
+
 const updateBedAnalytics = (bed?: BedState) => {
   if (!bed) {
     ['[data-bed-coverage]','[data-bed-fit]','[data-layer-low]','[data-layer-mid]','[data-layer-high]'].forEach(s => {
@@ -495,6 +612,7 @@ const updateBedAnalytics = (bed?: BedState) => {
       q(`[data-season-${s}-label]`)!.textContent='0%';
       (q(`[data-season-${s}]`) as HTMLElement).style.width='0%';
     });
+    updateComposition();
     return;
   }
 
@@ -511,14 +629,16 @@ const updateBedAnalytics = (bed?: BedState) => {
     q(`[data-season-${s}-label]`)!.textContent = `${pct}%`;
     (q(`[data-season-${s}]`) as HTMLElement).style.width = `${pct}%`;
   });
+  updateComposition(bed);
 };
 
 const updateSiteControls = (bed?:BedState) => {
   const sun = q<HTMLSelectElement>('[data-bed-sun]');
   const moisture = q<HTMLSelectElement>('[data-bed-moisture]');
   const ph = q<HTMLSelectElement>('[data-bed-ph]');
+  const front = q<HTMLSelectElement>('[data-bed-front]');
   const context = q('[data-site-context]');
-  [sun,moisture,ph].forEach(select => { if (select) select.disabled = !bed; });
+  [sun,moisture,ph,front].forEach(select => { if (select) select.disabled = !bed; });
 
   if (!bed) {
     if (context) context.textContent='brak rabaty';
@@ -528,6 +648,7 @@ const updateSiteControls = (bed?:BedState) => {
   if (sun) sun.value=bed.sun;
   if (moisture) moisture.value=bed.moisture;
   if (ph) ph.value=bed.ph;
+  if (front) front.value=bed.frontEdge;
   if (context) context.textContent=bed.name;
 };
 
@@ -589,13 +710,15 @@ const renderSelection = () => {
     q('[data-inspector-bed]')!.textContent = bed?.name || 'poza rabatą';
     q('[data-inspector-position]')!.textContent = `${Math.round(plant.x)} × ${Math.round(plant.y)}`;
     q('[data-inspector-spacing]')!.textContent = `${plant.spacing} cm`;
-    q('[data-inspector-height]')!.textContent = `${plant.height} cm`;
+    q('[data-inspector-spread]')!.textContent = `${Math.round(effectiveSpread(plant))} / ${plant.spread} cm`;
+    q('[data-inspector-height]')!.textContent = `${Math.round(effectiveHeight(plant))} / ${plant.height} cm`;
   } else if (bed) {
     q('[data-inspector-title]')!.textContent = bed.name;
     q('[data-inspector-type]')!.textContent = 'rabata';
     q('[data-inspector-bed]')!.textContent = `${plantsInBed(bed).length} roślin`;
     q('[data-inspector-position]')!.textContent = `${Math.round(bed.x)} × ${Math.round(bed.y)}`;
     q('[data-inspector-spacing]')!.textContent = `${Math.round(bed.width)} × ${Math.round(bed.height)}%`;
+    q('[data-inspector-spread]')!.textContent = '—';
     q('[data-inspector-height]')!.textContent = '—';
   } else {
     q('[data-inspector-title]')!.textContent='Plan ogrodu';
@@ -603,6 +726,7 @@ const renderSelection = () => {
     q('[data-inspector-bed]')!.textContent='—';
     q('[data-inspector-position]')!.textContent='—';
     q('[data-inspector-spacing]')!.textContent='—';
+    q('[data-inspector-spread]')!.textContent='—';
     q('[data-inspector-height]')!.textContent='—';
   }
 
@@ -752,6 +876,9 @@ q('[data-add-plant]')?.addEventListener('click',()=>{
     short:'+',
     spacing:50,
     height:60,
+    spread:60,
+    bloomMonths:[],
+    evergreen:false,
     seasons:['summer'],
     sun:['sun','partial','shade'],
     moisture:['dry','normal','moist'],
@@ -766,7 +893,7 @@ q('[data-add-bed]')?.addEventListener('click',()=>{
     id:`b${Date.now()}`,
     name:`Nowa rabata ${state.beds.length+1}`,
     x:38,y:38,width:24,height:18,
-    sun:'partial',moisture:'normal',ph:'neutral',
+    sun:'partial',moisture:'normal',ph:'neutral',frontEdge:'bottom',
   };
   state.beds.push(bed);
   state.selected={type:'bed',id:bed.id};
@@ -810,13 +937,14 @@ q('[data-fix-spacing]')?.addEventListener('click',()=>{
   scheduleSave();
 });
 
-const updateBedCondition = (key:'sun'|'moisture'|'ph', value:string) => {
+const updateBedCondition = (key:'sun'|'moisture'|'ph'|'frontEdge', value:string) => {
   const bed = getContextBed();
   if (!bed) return;
   pushHistory();
   if (key==='sun') bed.sun=value as Sun;
   if (key==='moisture') bed.moisture=value as Moisture;
   if (key==='ph') bed.ph=value as SoilPh;
+  if (key==='frontEdge') bed.frontEdge=value as FrontEdge;
   renderSelection();
   scheduleSave();
 };
@@ -824,6 +952,7 @@ const updateBedCondition = (key:'sun'|'moisture'|'ph', value:string) => {
 q<HTMLSelectElement>('[data-bed-sun]')?.addEventListener('change',e=>updateBedCondition('sun',(e.currentTarget as HTMLSelectElement).value));
 q<HTMLSelectElement>('[data-bed-moisture]')?.addEventListener('change',e=>updateBedCondition('moisture',(e.currentTarget as HTMLSelectElement).value));
 q<HTMLSelectElement>('[data-bed-ph]')?.addEventListener('change',e=>updateBedCondition('ph',(e.currentTarget as HTMLSelectElement).value));
+q<HTMLSelectElement>('[data-bed-front]')?.addEventListener('change',e=>updateBedCondition('frontEdge',(e.currentTarget as HTMLSelectElement).value));
 
 q('[data-auto-layout]')?.addEventListener('click',()=>{
   if (!state.beds.length) return;
@@ -849,16 +978,42 @@ q('[data-auto-layout]')?.addEventListener('click',()=>{
     const cols=Math.max(1,Math.ceil(Math.sqrt(plants.length*aspect)));
     const rows=Math.max(1,Math.ceil(plants.length/cols));
 
-    plants.forEach((plant,i)=>{
+    const positions=plants.map((_,i)=>{
       const col=i%cols;
       const row=Math.floor(i/cols);
-      plant.x=snap(bed.x + bed.width*((col+1)/(cols+1)));
-      plant.y=snap(bed.y + bed.height*((row+1)/(rows+1)));
+      const x=snap(bed.x + bed.width*((col+1)/(cols+1)));
+      const y=snap(bed.y + bed.height*((row+1)/(rows+1)));
+      return {x,y,backness:plantBackness({x,y} as PlantState,bed)};
+    }).sort((a,b)=>b.backness-a.backness);
+    const ordered=[...plants].sort((a,b)=>effectiveHeight(b)-effectiveHeight(a));
+    ordered.forEach((plant,i)=>{
+      plant.x=positions[i].x;
+      plant.y=positions[i].y;
     });
   });
 
   syncScene();
   scheduleSave();
+});
+
+q<HTMLInputElement>('[data-growth-year]')?.addEventListener('input',e=>{
+  state.growthYear=clamp(Number((e.currentTarget as HTMLInputElement).value)||3,1,5);
+  q('[data-growth-label]')!.textContent=`rok ${state.growthYear}/5`;
+  state.plants.forEach(plant=>{
+    const el=scene.querySelector<HTMLElement>(`[data-plant-id="${plant.id}"]`);
+    if (el) setPlantPosition(el,plant);
+  });
+  renderSelection();
+  scheduleSave();
+});
+
+qa<HTMLButtonElement>('[data-month]').forEach(button=>{
+  button.addEventListener('click',()=>{
+    state.currentMonth=clamp(Number(button.dataset.month)||0,0,12);
+    qa<HTMLButtonElement>('[data-month]').forEach(item=>item.classList.toggle('active',item===button));
+    renderSelection();
+    scheduleSave();
+  });
 });
 
 q('[data-reset-project]')?.addEventListener('click',()=>{
@@ -868,20 +1023,27 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   state.beds=clone(initialBeds);
   state.selected={type:'plant',id:'p1'};
   state.snap=true;
+  state.growthYear=3;
+  state.currentMonth=0;
   syncScene();
   setZoom(1);
   q('[data-toggle-snap]')!.textContent='Snap: ON';
   q('[data-snap-state]')!.textContent='10 px';
+  const growth=q<HTMLInputElement>('[data-growth-year]');
+  if (growth) growth.value='3';
+  q('[data-growth-label]')!.textContent='rok 3/5';
+  qa<HTMLButtonElement>('[data-month]').forEach(btn=>btn.classList.toggle('active',btn.dataset.month==='0'));
 });
 
 q('[data-export-project]')?.addEventListener('click',()=>{
   const payload={
     format:'moj-ogrod-planner',
-    version:4,
+    version:5,
     exportedAt:new Date().toISOString(),
     project:{name:'Ogród domowy',location:'Rzeszów'},
     plants:state.plants,
     beds:state.beds,
+    simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
   };
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -940,6 +1102,10 @@ document.addEventListener('keydown',event=>{
 
 q('[data-toggle-snap]')!.textContent=`Snap: ${state.snap?'ON':'OFF'}`;
 q('[data-snap-state]')!.textContent=state.snap?'10 px':'wyłączony';
+const growthInput=q<HTMLInputElement>('[data-growth-year]');
+if (growthInput) growthInput.value=String(state.growthYear);
+q('[data-growth-label]')!.textContent=`rok ${state.growthYear}/5`;
+qa<HTMLButtonElement>('[data-month]').forEach(btn=>btn.classList.toggle('active',Number(btn.dataset.month)===state.currentMonth));
 updateHistoryButtons();
 syncScene();
 setZoom(state.zoom);
