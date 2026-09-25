@@ -3,12 +3,23 @@ import '../styles/moj-ogrod-planner.scss';
 
 const nav = [
   ['Plan ogrodu', 'aktywny'],
-  ['Rabaty i sektory', '6'],
+  ['Rabaty i sektory', '3'],
   ['Rośliny', '210'],
   ['Mój ogród', '56'],
   ['Zakupy', '12'],
   ['Studio', ''],
   ['Analiza', ''],
+];
+
+const libraryPlants = [
+  ['Hortensja bukietowa', 'Hydrangea paniculata', '90 cm', 'H'],
+  ['Sosna bośniacka Compact Gem', 'Pinus heldreichii', '120 cm', 'S'],
+  ['Paproć ogrodowa', 'Dryopteris', '55 cm', 'P'],
+  ['Hakonechloa smukła', 'Hakonechloa macra', '50 cm', 'Ha'],
+  ['Żurawka', 'Heuchera', '35 cm', 'Ż'],
+  ['Funkia', 'Hosta', '60 cm', 'F'],
+  ['Rozplenica japońska', 'Pennisetum alopecuroides', '70 cm', 'R'],
+  ['Tawułka Arendsa', 'Astilbe × arendsii', '45 cm', 'T'],
 ];
 ---
 
@@ -41,7 +52,7 @@ const nav = [
       </header>
 
       <div class="planner-body">
-        <aside class="sidebar">
+        <aside class="sidebar left">
           <div class="section-kicker">Projekt</div>
           {nav.slice(0, 4).map(([label, count], i) => (
             <button class:list={['nav-item', { active: i === 0 }]}>
@@ -54,20 +65,46 @@ const nav = [
             <button class="nav-item"><span>{label}</span>{count && <small>{count}</small>}</button>
           ))}
 
+          <div class="section-kicker">Biblioteka roślin</div>
+          <label class="library-search">
+            <span>⌕</span>
+            <input type="search" placeholder="Szukaj rośliny…" data-library-search />
+          </label>
+
+          <div class="plant-library" data-plant-library>
+            {libraryPlants.map(([name, latin, spacing, short]) => (
+              <button
+                class="library-item"
+                data-library-item
+                data-library-name={name}
+                data-library-latin={latin}
+                data-library-spacing={spacing.replace(' cm','')}
+                data-library-short={short}
+              >
+                <span class="library-avatar">{short}</span>
+                <span class="library-copy">
+                  <strong>{name}</strong>
+                  <small>{latin} · {spacing}</small>
+                </span>
+                <span class="library-add">＋</span>
+              </button>
+            ))}
+          </div>
+
           <div class="section-kicker">Warstwy</div>
           <button class="nav-item"><span>Rośliny posadzone</span><small>✓</small></button>
           <button class="nav-item"><span>Rośliny planowane</span><small>✓</small></button>
-          <button class="nav-item"><span>Rozstaw i kolizje</span><small>✓</small></button>
-          <button class="nav-item"><span>Sezon / wzrost</span><small>2027</small></button>
+          <button class="nav-item"><span>Rozstaw i kolizje</span><small data-layer-collision>✓</small></button>
+          <button class="nav-item"><span>Snap do siatki</span><small data-snap-state>10 px</small></button>
         </aside>
 
         <main class="workspace">
           <div class="workspace-toolbar">
             <div class="tool-group">
               <button class="ghost-btn active-tool">Wybierz</button>
-              <button class="ghost-btn">Dodaj rabatę</button>
+              <button class="ghost-btn" data-add-bed>Dodaj rabatę</button>
               <button class="ghost-btn" data-add-plant>Dodaj roślinę</button>
-              <button class="ghost-btn">Zmierz</button>
+              <button class="ghost-btn" data-toggle-snap>Snap: ON</button>
               <button class="ghost-btn" data-auto-layout>Auto-layout</button>
             </div>
             <div class="tool-group">
@@ -81,22 +118,21 @@ const nav = [
           <section class="canvas" aria-label="Plan ogrodu" data-planner-canvas>
             <div class="planner-scene" data-planner-scene>
               <div class="garden-boundary"></div>
-              <button class="bed bed-a" data-bed="front" aria-label="Rabata frontowa"></button>
-              <button class="bed bed-b" data-bed="shade" aria-label="Rabata cienista"></button>
-              <button class="bed bed-c" data-bed="terrace" aria-label="Rabata przy tarasie"></button>
             </div>
 
-            <div class="canvas-help">Przeciągnij roślinę, aby zmienić jej pozycję · Delete usuwa zaznaczoną roślinę</div>
+            <div class="canvas-help">Przeciągnij roślinę lub rabatę · uchwyt w prawym dolnym rogu zmienia rozmiar rabaty · Delete usuwa zaznaczenie</div>
             <div class="canvas-legend">
-              <span>● posadzone</span><span>○ planowane</span><span>↔ rozstaw</span>
+              <span><i class="legend-dot planted"></i>posadzone</span>
+              <span><i class="legend-dot collision"></i>kolizja</span>
+              <span><i class="legend-box"></i>rabata</span>
             </div>
           </section>
 
           <section class="bottom-strip">
-            <div class="metric"><strong>6</strong><span>rabat i sektorów</span></div>
-            <div class="metric"><strong>56</strong><span>roślin w Twoim ogrodzie</span></div>
+            <div class="metric"><strong data-kpi-beds>3</strong><span>rabaty i sektory</span></div>
+            <div class="metric"><strong data-kpi-plants>6</strong><span>roślin w projekcie</span></div>
             <div class="metric"><strong>12</strong><span>pozycji do zakupu</span></div>
-            <div class="metric"><strong>3</strong><span>kolizje do sprawdzenia</span></div>
+            <div class="metric"><strong data-kpi-collisions>0</strong><span>kolizje do sprawdzenia</span></div>
           </section>
         </main>
 
@@ -107,31 +143,30 @@ const nav = [
               <h3 data-inspector-title>Hortensja bukietowa</h3>
               <span class="badge" data-inspector-type>roślina</span>
             </div>
-            <div class="property-row"><span>Status</span><strong>posadzona</strong></div>
-            <div class="property-row"><span>Ekspozycja</span><strong>wschód</strong></div>
-            <div class="property-row"><span>Rozstaw</span><strong>90 cm</strong></div>
-            <div class="property-row"><span>Gleba</span><strong>próchniczna</strong></div>
+            <div class="property-row"><span>Typ</span><strong data-inspector-kind>roślina</strong></div>
+            <div class="property-row"><span>Pozycja</span><strong data-inspector-position>22 × 25</strong></div>
+            <div class="property-row"><span>Rozstaw</span><strong data-inspector-spacing>90 cm</strong></div>
+            <div class="property-row"><span>Kolizja</span><strong data-inspector-collision>nie</strong></div>
           </div>
 
           <div class="panel-card">
             <h3>Analiza kompozycji</h3>
-            <p>Pokrycie rabaty jest dobre, ale 3 rośliny naruszają docelowy rozstaw. Największe zagęszczenie występuje w centralnej części rabaty.</p>
-            <div class="progress"><i></i></div>
-            <div class="property-row"><span>Ocena układu</span><strong>74%</strong></div>
+            <p data-analysis-copy>Układ jest analizowany na podstawie odległości między roślinami oraz zagęszczenia w rabatach.</p>
+            <div class="progress"><i data-analysis-progress></i></div>
+            <div class="property-row"><span>Ocena układu</span><strong data-analysis-score>100%</strong></div>
           </div>
 
           <div class="panel-card">
-            <h3>Sezonowość</h3>
-            <div class="property-row"><span>Wiosna</span><strong>68%</strong></div>
-            <div class="property-row"><span>Lato</span><strong>92%</strong></div>
-            <div class="property-row"><span>Jesień</span><strong>81%</strong></div>
-            <div class="property-row"><span>Zima</span><strong>45%</strong></div>
+            <h3>Geometria rabaty</h3>
+            <div class="property-row"><span>Szerokość</span><strong data-bed-width>—</strong></div>
+            <div class="property-row"><span>Wysokość</span><strong data-bed-height>—</strong></div>
+            <div class="property-row"><span>Pozycja</span><strong data-bed-position>—</strong></div>
           </div>
 
           <div class="panel-card">
             <h3>Do poprawy</h3>
-            <p><span class="badge warn">3 kolizje</span></p>
-            <p class="panel-note">Planner będzie tu wskazywał konflikty rozstawu, brakujące piętra kompozycji i luki sezonowe.</p>
+            <p><span class="badge warn" data-collision-badge>0 kolizji</span></p>
+            <p class="panel-note" data-collision-note>Brak konfliktów rozstawu.</p>
           </div>
         </aside>
       </div>
