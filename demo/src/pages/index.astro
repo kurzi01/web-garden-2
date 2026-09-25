@@ -24,21 +24,17 @@ const nav = [
       <header class="planner-topbar">
         <div class="brand-block">
           <div class="brand-mark">MO</div>
-          <div class="brand-copy">
-            <strong>Mój Ogród</strong>
-            <span>Planner Pro</span>
-          </div>
+          <div class="brand-copy"><strong>Mój Ogród</strong><span>Planner Pro</span></div>
         </div>
 
         <div class="project-title">
           <span class="status-dot"></span>
           <strong>Ogród domowy · Rzeszów</strong>
-          <span class="badge">zapisano</span>
+          <span class="badge" data-save-badge>zapisano</span>
         </div>
 
         <div class="top-actions">
-          <button class="icon-btn" title="Cofnij">↶</button>
-          <button class="icon-btn" title="Ponów">↷</button>
+          <button class="icon-btn" title="Przywróć projekt" data-reset-project>↺</button>
           <button class="ghost-btn">Import z mobile</button>
           <button class="primary-btn">Eksport projektu</button>
         </div>
@@ -49,17 +45,13 @@ const nav = [
           <div class="section-kicker">Projekt</div>
           {nav.slice(0, 4).map(([label, count], i) => (
             <button class:list={['nav-item', { active: i === 0 }]}>
-              <span>{label}</span>
-              {count && <small>{count}</small>}
+              <span>{label}</span>{count && <small>{count}</small>}
             </button>
           ))}
 
           <div class="section-kicker">Planowanie</div>
           {nav.slice(4).map(([label, count]) => (
-            <button class="nav-item">
-              <span>{label}</span>
-              {count && <small>{count}</small>}
-            </button>
+            <button class="nav-item"><span>{label}</span>{count && <small>{count}</small>}</button>
           ))}
 
           <div class="section-kicker">Warstwy</div>
@@ -72,37 +64,31 @@ const nav = [
         <main class="workspace">
           <div class="workspace-toolbar">
             <div class="tool-group">
-              <button class="ghost-btn">Wybierz</button>
+              <button class="ghost-btn active-tool">Wybierz</button>
               <button class="ghost-btn">Dodaj rabatę</button>
-              <button class="ghost-btn">Dodaj roślinę</button>
+              <button class="ghost-btn" data-add-plant>Dodaj roślinę</button>
               <button class="ghost-btn">Zmierz</button>
-              <button class="ghost-btn">Auto-layout</button>
+              <button class="ghost-btn" data-auto-layout>Auto-layout</button>
             </div>
             <div class="tool-group">
-              <button class="ghost-btn">−</button>
-              <button class="ghost-btn">100%</button>
-              <button class="ghost-btn">+</button>
-              <button class="ghost-btn">Dopasuj</button>
+              <button class="ghost-btn" data-zoom-out>−</button>
+              <button class="ghost-btn" data-zoom-reset data-zoom-label>100%</button>
+              <button class="ghost-btn" data-zoom-in>+</button>
+              <button class="ghost-btn" data-fit>Dopasuj</button>
             </div>
           </div>
 
-          <section class="canvas" aria-label="Plan ogrodu">
-            <div class="garden-boundary"></div>
-            <div class="bed bed-a"></div>
-            <div class="bed bed-b"></div>
-            <div class="bed bed-c"></div>
+          <section class="canvas" aria-label="Plan ogrodu" data-planner-canvas>
+            <div class="planner-scene" data-planner-scene>
+              <div class="garden-boundary"></div>
+              <button class="bed bed-a" data-bed="front" aria-label="Rabata frontowa"></button>
+              <button class="bed bed-b" data-bed="shade" aria-label="Rabata cienista"></button>
+              <button class="bed bed-c" data-bed="terrace" aria-label="Rabata przy tarasie"></button>
+            </div>
 
-            <button class="plant-dot p1" title="Hortensja bukietowa">H</button>
-            <button class="plant-dot p2" title="Sosna bośniacka">S</button>
-            <button class="plant-dot p3" title="Paproć">P</button>
-            <button class="plant-dot p4" title="Hakonechloa">Ha</button>
-            <button class="plant-dot p5" title="Żurawka">Ż</button>
-            <button class="plant-dot p6" title="Funkia">F</button>
-
+            <div class="canvas-help">Przeciągnij roślinę, aby zmienić jej pozycję · Delete usuwa zaznaczoną roślinę</div>
             <div class="canvas-legend">
-              <span>● posadzone</span>
-              <span>○ planowane</span>
-              <span>↔ rozstaw</span>
+              <span>● posadzone</span><span>○ planowane</span><span>↔ rozstaw</span>
             </div>
           </section>
 
@@ -116,16 +102,15 @@ const nav = [
 
         <aside class="sidebar right">
           <div class="section-kicker">Inspektor</div>
-
           <div class="panel-card">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px">
-              <h3 style="margin:0">Rabata frontowa</h3>
-              <span class="badge">wybrana</span>
+            <div class="inspector-heading">
+              <h3 data-inspector-title>Hortensja bukietowa</h3>
+              <span class="badge" data-inspector-type>roślina</span>
             </div>
-            <div class="property-row"><span>Powierzchnia</span><strong>8,4 m²</strong></div>
+            <div class="property-row"><span>Status</span><strong>posadzona</strong></div>
             <div class="property-row"><span>Ekspozycja</span><strong>wschód</strong></div>
+            <div class="property-row"><span>Rozstaw</span><strong>90 cm</strong></div>
             <div class="property-row"><span>Gleba</span><strong>próchniczna</strong></div>
-            <div class="property-row"><span>Rośliny</span><strong>14</strong></div>
           </div>
 
           <div class="panel-card">
@@ -146,10 +131,14 @@ const nav = [
           <div class="panel-card">
             <h3>Do poprawy</h3>
             <p><span class="badge warn">3 kolizje</span></p>
-            <p style="margin-top:10px">Planner będzie tu wskazywał konflikty rozstawu, brakujące piętra kompozycji i luki sezonowe.</p>
+            <p class="panel-note">Planner będzie tu wskazywał konflikty rozstawu, brakujące piętra kompozycji i luki sezonowe.</p>
           </div>
         </aside>
       </div>
     </div>
+
+    <script>
+      import '../scripts/moj-ogrod-planner';
+    </script>
   </body>
 </html>
