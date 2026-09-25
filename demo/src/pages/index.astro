@@ -316,6 +316,33 @@ const libraryPlants = [
             </div>
           </div>
 
+          <div class="panel-card plant-history-panel" data-plant-history hidden>
+            <div class="inspector-heading">
+              <h3>Historia i zdjęcia</h3>
+              <span class="badge" data-history-count>0 wpisów</span>
+            </div>
+            <div class="history-form">
+              <input type="date" data-history-date />
+              <select data-history-type>
+                <option value="planting">Sadzenie</option>
+                <option value="watering">Podlewanie</option>
+                <option value="fertilizing">Nawożenie</option>
+                <option value="pruning">Cięcie</option>
+                <option value="health">Zdrowie / obserwacja</option>
+                <option value="note">Notatka</option>
+              </select>
+              <textarea rows="2" placeholder="Co zostało zrobione / zaobserwowane?" data-history-note></textarea>
+              <button class="primary-btn" type="button" data-add-history>Dodaj wpis</button>
+            </div>
+            <div class="history-list" data-history-list></div>
+            <div class="photo-tools">
+              <button class="ghost-btn" type="button" data-add-photo>Dodaj zdjęcie</button>
+              <input type="file" accept="image/*" hidden data-photo-input />
+              <small>Zdjęcia są kompresowane i zapisane lokalnie w projekcie.</small>
+            </div>
+            <div class="plant-photo-grid" data-photo-grid></div>
+          </div>
+
           <div class="panel-card">
             <div class="inspector-heading">
               <h3>Warunki stanowiska</h3>
