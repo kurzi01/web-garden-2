@@ -12,14 +12,14 @@ const nav = [
 ];
 
 const libraryPlants = [
-  ['Hortensja bukietowa', 'Hydrangea paniculata', '90', '180', 'H', 'summer,autumn'],
-  ['Sosna bośniacka Compact Gem', 'Pinus heldreichii', '120', '120', 'S', 'spring,summer,autumn,winter'],
-  ['Paproć ogrodowa', 'Dryopteris', '55', '70', 'P', 'spring,summer,autumn'],
-  ['Hakonechloa smukła', 'Hakonechloa macra', '50', '45', 'Ha', 'summer,autumn'],
-  ['Żurawka', 'Heuchera', '35', '30', 'Ż', 'spring,summer,autumn,winter'],
-  ['Funkia', 'Hosta', '60', '55', 'F', 'spring,summer,autumn'],
-  ['Rozplenica japońska', 'Pennisetum alopecuroides', '70', '90', 'R', 'summer,autumn,winter'],
-  ['Tawułka Arendsa', 'Astilbe × arendsii', '45', '70', 'T', 'summer'],
+  { name:'Hortensja bukietowa', latin:'Hydrangea paniculata', spacing:90, height:180, short:'H', seasons:'summer,autumn', sun:'sun,partial', moisture:'normal,moist', ph:'acid,neutral,alkaline', soil:'żyzna, próchniczna i przepuszczalna' },
+  { name:'Sosna bośniacka Compact Gem', latin:"Pinus heldreichii 'Compact Gem'", spacing:120, height:250, short:'S', seasons:'spring,summer,autumn,winter', sun:'sun', moisture:'dry,normal', ph:'acid,neutral,alkaline', soil:'przepuszczalna; bez zastoin wody' },
+  { name:'Paproć ogrodowa', latin:'Dryopteris', spacing:55, height:90, short:'P', seasons:'spring,summer,autumn', sun:'shade,partial', moisture:'moist', ph:'acid,neutral,alkaline', soil:'próchniczna, stale lekko wilgotna' },
+  { name:'Hakonechloa smukła', latin:'Hakonechloa macra', spacing:50, height:45, short:'Ha', seasons:'summer,autumn,winter', sun:'sun,partial,shade', moisture:'moist', ph:'acid,neutral,alkaline', soil:'próchniczna, żyzna i wilgotna' },
+  { name:'Żurawka', latin:'Heuchera', spacing:35, height:35, short:'Ż', seasons:'spring,summer,autumn,winter', sun:'partial,shade', moisture:'normal,moist', ph:'acid,neutral', soil:'próchniczna i przepuszczalna' },
+  { name:'Funkia', latin:'Hosta', spacing:60, height:60, short:'F', seasons:'spring,summer,autumn', sun:'partial,shade', moisture:'moist', ph:'acid,neutral,alkaline', soil:'żyzna, próchniczna i wilgotna' },
+  { name:'Rozplenica japońska', latin:'Pennisetum alopecuroides', spacing:70, height:90, short:'R', seasons:'summer,autumn,winter', sun:'sun', moisture:'dry,normal', ph:'neutral,alkaline', soil:'przepuszczalna, umiarkowanie żyzna' },
+  { name:'Tawułka Arendsa', latin:'Astilbe × arendsii', spacing:45, height:75, short:'T', seasons:'summer', sun:'partial,shade', moisture:'moist', ph:'acid,neutral', soil:'żyzna, próchniczna i wilgotna' },
 ];
 ---
 
@@ -28,7 +28,7 @@ const libraryPlants = [
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <title>Mój Ogród — Planner Pro</title>
-    <meta name="description" content="Desktopowy planer ogrodu: rabaty, rośliny, rozstaw, sezonowość, zakupy i analiza kompozycji." />
+    <meta name="description" content="Desktopowy planer ogrodu: rabaty, rośliny, wymagania stanowiskowe, rozstaw, sezonowość i analiza kompozycji." />
   </head>
   <body>
     <div class="planner-shell">
@@ -44,8 +44,9 @@ const libraryPlants = [
         </div>
         <div class="top-actions">
           <button class="icon-btn" title="Przywróć projekt" data-reset-project>↺</button>
-          <button class="ghost-btn">Import z mobile</button>
-          <button class="primary-btn">Eksport projektu</button>
+          <button class="ghost-btn" data-import-project>Import JSON</button>
+          <input type="file" accept=".json,application/json" hidden data-import-input />
+          <button class="primary-btn" data-export-project>Eksport JSON</button>
         </div>
       </header>
 
@@ -69,48 +70,61 @@ const libraryPlants = [
             <input type="search" placeholder="Szukaj rośliny…" data-library-search />
           </label>
 
+          <label class="compatibility-filter">
+            <input type="checkbox" data-compatible-filter />
+            <span data-compatible-filter-label>Wybierz rabatę, aby filtrować</span>
+            <small data-compatible-filter-count>8/8</small>
+          </label>
+
           <div class="plant-library">
-            {libraryPlants.map(([name, latin, spacing, height, short, seasons]) => (
+            {libraryPlants.map((plant) => (
               <button
                 class="library-item"
                 data-library-item
-                data-library-name={name}
-                data-library-latin={latin}
-                data-library-spacing={spacing}
-                data-library-height={height}
-                data-library-short={short}
-                data-library-seasons={seasons}
+                data-library-name={plant.name}
+                data-library-latin={plant.latin}
+                data-library-spacing={plant.spacing}
+                data-library-height={plant.height}
+                data-library-short={plant.short}
+                data-library-seasons={plant.seasons}
+                data-library-sun={plant.sun}
+                data-library-moisture={plant.moisture}
+                data-library-ph={plant.ph}
+                data-library-soil={plant.soil}
               >
-                <span class="library-avatar">{short}</span>
+                <span class="library-avatar">{plant.short}</span>
                 <span class="library-copy">
-                  <strong>{name}</strong>
-                  <small>{latin} · {spacing} cm · {height} cm</small>
+                  <strong>{plant.name}</strong>
+                  <small>{plant.latin} · {plant.spacing} cm</small>
                 </span>
+                <span class="library-fit" data-library-fit>—</span>
                 <span class="library-add">＋</span>
               </button>
             ))}
           </div>
 
           <div class="section-kicker">Warstwy</div>
-          <button class="nav-item"><span>Rośliny posadzone</span><small>✓</small></button>
           <button class="nav-item"><span>Rośliny poza rabatą</span><small data-outside-count>0</small></button>
-          <button class="nav-item"><span>Rozstaw i kolizje</span><small data-layer-collision>✓</small></button>
+          <button class="nav-item"><span>Niedopasowane do stanowiska</span><small data-mismatch-count>0</small></button>
           <button class="nav-item"><span>Snap do siatki</span><small data-snap-state>10 px</small></button>
         </aside>
 
         <main class="workspace">
           <div class="workspace-toolbar">
             <div class="tool-group">
+              <button class="ghost-btn compact" title="Cofnij (Ctrl+Z)" data-undo disabled>↶</button>
+              <button class="ghost-btn compact" title="Ponów (Ctrl+Shift+Z)" data-redo disabled>↷</button>
+              <span class="toolbar-divider"></span>
               <button class="ghost-btn active-tool">Wybierz</button>
               <button class="ghost-btn" data-add-bed>Dodaj rabatę</button>
               <button class="ghost-btn" data-add-plant>Dodaj roślinę</button>
               <button class="ghost-btn" data-toggle-snap>Snap: ON</button>
-              <button class="ghost-btn" data-auto-layout>Auto-layout</button>
+              <button class="ghost-btn" data-auto-layout>Auto-layout smart</button>
             </div>
             <div class="tool-group">
-              <button class="ghost-btn" data-zoom-out>−</button>
+              <button class="ghost-btn compact" data-zoom-out>−</button>
               <button class="ghost-btn" data-zoom-reset data-zoom-label>100%</button>
-              <button class="ghost-btn" data-zoom-in>+</button>
+              <button class="ghost-btn compact" data-zoom-in>+</button>
               <button class="ghost-btn" data-fit>Dopasuj</button>
             </div>
           </div>
@@ -119,9 +133,10 @@ const libraryPlants = [
             <div class="planner-scene" data-planner-scene>
               <div class="garden-boundary"></div>
             </div>
-            <div class="canvas-help">Przeciągnij roślinę do rabaty · uchwyt zmienia rozmiar rabaty · Delete usuwa zaznaczenie</div>
+            <div class="canvas-help">Zaznacz roślinę, aby zobaczyć halo rozstawu · Auto-layout uwzględnia stanowisko · Delete usuwa</div>
             <div class="canvas-legend">
-              <span><i class="legend-dot planted"></i>w rabacie</span>
+              <span><i class="legend-dot planted"></i>pasuje</span>
+              <span><i class="legend-dot mismatch"></i>stanowisko</span>
               <span><i class="legend-dot collision"></i>kolizja</span>
               <span><i class="legend-dot outside"></i>poza rabatą</span>
             </div>
@@ -131,7 +146,8 @@ const libraryPlants = [
             <div class="metric"><strong data-kpi-beds>3</strong><span>rabaty i sektory</span></div>
             <div class="metric"><strong data-kpi-plants>6</strong><span>roślin w projekcie</span></div>
             <div class="metric"><strong data-kpi-coverage>0%</strong><span>średnie pokrycie rabat</span></div>
-            <div class="metric"><strong data-kpi-collisions>0</strong><span>kolizje do sprawdzenia</span></div>
+            <div class="metric"><strong data-kpi-mismatch>0</strong><span>źle dobrane stanowisko</span></div>
+            <div class="metric"><strong data-kpi-collisions>0</strong><span>roślin w kolizji</span></div>
           </section>
         </main>
 
@@ -146,7 +162,48 @@ const libraryPlants = [
             <div class="property-row"><span>Przynależność</span><strong data-inspector-bed>—</strong></div>
             <div class="property-row"><span>Pozycja</span><strong data-inspector-position>—</strong></div>
             <div class="property-row"><span>Rozstaw</span><strong data-inspector-spacing>—</strong></div>
-            <div class="property-row"><span>Wysokość</span><strong data-inspector-height>—</strong></div>
+            <div class="property-row"><span>Wysokość docelowa</span><strong data-inspector-height>—</strong></div>
+          </div>
+
+          <div class="panel-card" data-plant-requirements>
+            <h3>Wymagania rośliny</h3>
+            <div class="property-row"><span>Światło</span><strong data-plant-sun>—</strong></div>
+            <div class="property-row"><span>Wilgotność</span><strong data-plant-moisture>—</strong></div>
+            <div class="property-row"><span>Odczyn</span><strong data-plant-ph>—</strong></div>
+            <div class="property-row"><span>Ziemia</span><strong class="property-long" data-plant-soil>—</strong></div>
+            <div class="compatibility-status" data-plant-fit>Wybierz roślinę w rabacie.</div>
+          </div>
+
+          <div class="panel-card">
+            <div class="inspector-heading">
+              <h3>Warunki stanowiska</h3>
+              <span class="badge" data-site-context>brak rabaty</span>
+            </div>
+            <label class="field-row">
+              <span>Światło</span>
+              <select data-bed-sun disabled>
+                <option value="sun">Pełne słońce</option>
+                <option value="partial">Półcień</option>
+                <option value="shade">Cień</option>
+              </select>
+            </label>
+            <label class="field-row">
+              <span>Wilgotność</span>
+              <select data-bed-moisture disabled>
+                <option value="dry">Sucha</option>
+                <option value="normal">Umiarkowana</option>
+                <option value="moist">Wilgotna</option>
+              </select>
+            </label>
+            <label class="field-row">
+              <span>Odczyn gleby</span>
+              <select data-bed-ph disabled>
+                <option value="acid">Kwaśny</option>
+                <option value="neutral">Obojętny</option>
+                <option value="alkaline">Zasadowy</option>
+              </select>
+            </label>
+            <p class="panel-note">Zmiana warunków natychmiast przelicza dobór roślin w tej rabacie.</p>
           </div>
 
           <div class="panel-card">
@@ -174,7 +231,7 @@ const libraryPlants = [
 
           <div class="panel-card">
             <h3>Do poprawy</h3>
-            <p><span class="badge warn" data-collision-badge>0 kolizji</span></p>
+            <p><span class="badge warn" data-collision-badge>0 problemów</span></p>
             <p class="panel-note" data-collision-note>Brak konfliktów.</p>
           </div>
         </aside>
