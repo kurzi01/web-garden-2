@@ -8,6 +8,7 @@ const nav = [
   ['Rośliny', '8 / 210', 'planner'],
   ['Mój ogród', '', 'garden'],
   ['Zakupy', '', 'shopping'],
+  ['Kalendarz', '', 'calendar'],
   ['Studio', '', 'studio'],
   ['Analiza', '', 'analysis'],
 ];
@@ -79,7 +80,9 @@ const libraryPlants = [
               <span>{label}</span>
               {label === 'Zakupy'
                 ? <small data-nav-shopping-count>0</small>
-                : count && <small>{count}</small>}
+                : label === 'Kalendarz'
+                  ? <small data-nav-task-count>0</small>
+                  : count && <small>{count}</small>}
             </button>
           ))}
 
@@ -255,6 +258,39 @@ const libraryPlants = [
             <div class="shopping-sections" data-shopping-list></div>
           </section>
 
+
+          <section class="workspace-overlay" data-workspace-view="calendar" hidden>
+            <div class="overlay-header">
+              <div>
+                <span class="section-kicker">Kalendarz prac</span>
+                <h2>Zadania w ogrodzie</h2>
+                <p>Prace dla konkretnych roślin i całego ogrodu. Wspólny model pod późniejszą synchronizację z mobile.</p>
+              </div>
+              <button class="icon-btn" data-close-view aria-label="Zamknij">×</button>
+            </div>
+            <div class="task-toolbar">
+              <label><span>Termin</span><input type="date" data-task-date /></label>
+              <label><span>Typ</span>
+                <select data-task-type>
+                  <option value="watering">Podlewanie</option>
+                  <option value="fertilizing">Nawożenie</option>
+                  <option value="pruning">Cięcie</option>
+                  <option value="planting">Sadzenie</option>
+                  <option value="health">Kontrola zdrowia</option>
+                  <option value="custom">Inne</option>
+                </select>
+              </label>
+              <label class="task-title-field"><span>Zadanie</span><input type="text" placeholder="np. Podlać rabatę cienistą" data-task-title /></label>
+              <label><span>Dotyczy</span><select data-task-plant><option value="">Cały ogród</option></select></label>
+              <button class="primary-btn" type="button" data-add-task>Dodaj zadanie</button>
+            </div>
+            <div class="task-filter-row">
+              <button class="ghost-btn active-tool" data-task-filter="open">Do zrobienia</button>
+              <button class="ghost-btn" data-task-filter="all">Wszystkie</button>
+              <button class="ghost-btn" data-task-filter="done">Wykonane</button>
+            </div>
+            <div class="task-list" data-task-list></div>
+          </section>
           <section class="workspace-overlay" data-workspace-view="studio" hidden>
             <div class="overlay-header">
               <div>
