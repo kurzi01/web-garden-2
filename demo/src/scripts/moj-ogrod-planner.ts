@@ -1610,7 +1610,14 @@ scene.addEventListener('pointerdown', event => {
     return;
   }
 
-  if (paintMode && !target.closest('[data-plant-id]') && !target.closest('[data-resize-bed]')) {
+  if (
+    paintMode &&
+    !target.closest('[data-plant-id]') &&
+    !target.closest('[data-resize-bed]') &&
+    !target.closest('[data-garden-element-id]') &&
+    !target.closest('[data-resize-element]') &&
+    !target.closest('[data-boundary-index]')
+  ) {
     const source=paintSourceId ? state.plants.find(p=>p.id===paintSourceId) : undefined;
     if (source) {
       pushHistory();
@@ -2280,7 +2287,7 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
 
 const projectPayload=()=>({
   format:'moj-ogrod-planner',
-  version:7,
+  version:9,
   exportedAt:new Date().toISOString(),
   project:{name:'Ogród domowy',location:'Rzeszów',gardenWidthM:state.gardenWidthM},
   plants:state.plants,
