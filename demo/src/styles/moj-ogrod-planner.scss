@@ -305,3 +305,15 @@ button,input,select { font:inherit; }
 @media (max-width:1180px) {
   .bottom-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
+
+.quick-actions {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:9px;
+}
+.quick-actions .ghost-btn {
+  height:34px;
+  padding:0 8px;
+  font-size:11px;
+}
