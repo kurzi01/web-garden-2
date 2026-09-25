@@ -1830,6 +1830,11 @@ ${shoppingRows.map(row=>{const price=budgetPrices[row.key]||0;return `<tr><td>${
 };
 
 const firstArray=(...values:unknown[])=>values.find(Array.isArray) as any[]|undefined;
+const toArrayValue=<T extends string>(value:unknown):T[]|undefined=>{
+  if (Array.isArray(value)) return value.map(String).filter(Boolean) as T[];
+  if (typeof value==='string' && value.trim()) return value.split(',').map(item=>item.trim()).filter(Boolean) as T[];
+  return undefined;
+};
 const normalizeMobileStatus=(value:unknown):PlantStatus=>{
   const status=String(value||'').toLowerCase();
   if (['planted','posadzona','posadzone','active','existing'].includes(status)) return 'planted';
@@ -1879,10 +1884,10 @@ const adaptImportedBackup=(parsed:any)=>{
       spread:merged.spread ?? merged.width ?? merged.targetWidth ?? merged.widthCm,
       bloomMonths:merged.bloomMonths ?? merged.floweringMonths,
       evergreen:merged.evergreen,
-      seasons:merged.seasons,
-      sun:merged.sun ?? merged.light,
-      moisture:merged.moisture,
-      ph:merged.ph,
+      seasons:toArrayValue<Season>(merged.seasons),
+      sun:toArrayValue<Sun>(merged.sun ?? merged.light),
+      moisture:toArrayValue<Moisture>(merged.moisture),
+      ph:toArrayValue<SoilPh>(merged.ph),
       soil:merged.soil ?? merged.soilType,
       status:normalizeMobileStatus(raw.status ?? raw.state ?? raw.plantingStatus),
     },index);
