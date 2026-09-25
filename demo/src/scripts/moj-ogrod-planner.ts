@@ -2004,11 +2004,12 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
 
 const projectPayload=()=>({
   format:'moj-ogrod-planner',
-  version:6,
+  version:7,
   exportedAt:new Date().toISOString(),
   project:{name:'Ogród domowy',location:'Rzeszów',gardenWidthM:state.gardenWidthM},
   plants:state.plants,
   beds:state.beds,
+  elements:state.elements,
   simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
   layers:{showPlanted:state.showPlanted,showPlanned:state.showPlanned},
 });
@@ -2068,13 +2069,17 @@ table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:7px 8px;b
 <h1>Mój Ogród — raport projektu</h1><div class="meta">Ogród domowy · Rzeszów · eksport ${new Date().toLocaleString('pl-PL')}</div>
 <div class="kpis">
 <div><span>Rośliny</span><strong>${state.plants.length}</strong><small>${planted} posadzonych · ${planned} planowanych</small></div>
-<div><span>Rabaty</span><strong>${state.beds.length}</strong><small>rok wzrostu ${state.growthYear}/5</small></div>
+<div><span>Rabaty / elementy</span><strong>${state.beds.length} / ${state.elements.length}</strong><small>rok wzrostu ${state.growthYear}/5</small></div>
 <div><span>Problemy</span><strong>${collisions+mismatch+outside}</strong><small>${collisions} kolizji · ${mismatch} stanowisko · ${outside} poza rabatą</small></div>
 <div><span>Budżet</span><strong>${formatMoney.format(budgetTotal)}</strong><small>na podstawie wpisanych cen</small></div>
 </div>
 <h2>Rabaty</h2><div class="beds">
 ${state.beds.map(bed=>`<div class="bed"><h3>${escapeHtml(bed.name)}</h3><div class="muted">${plantsInBed(bed).length} roślin · pokrycie ${coverageForBed(bed)}% · fit ${bedFitPercent(bed)}% · warstwowanie ${layeringScore(bed)}%</div><div>Światło: ${sunLabels[bed.sun]} · wilgotność: ${moistureLabels[bed.moisture]} · pH: ${phLabels[bed.ph]}</div></div>`).join('')}
 </div>
+<h2>Elementy ogrodu</h2>
+<table><thead><tr><th>Typ</th><th>Nazwa</th><th>Pozycja</th><th>Wymiary względne</th></tr></thead><tbody>
+${state.elements.map(item=>`<tr><td>${escapeHtml(elementLabels[item.type])}</td><td>${escapeHtml(item.name)}</td><td>${Math.round(item.x)} × ${Math.round(item.y)}</td><td>${Math.round(item.width)} × ${Math.round(item.height)}%</td></tr>`).join('')}
+</tbody></table>
 <h2>Rośliny</h2>
 <table><thead><tr><th>Roślina</th><th>Status</th><th>Rabata</th><th>Stanowisko</th><th>Gabaryt</th><th>Kwitnienie</th></tr></thead><tbody>
 ${state.plants.map(plant=>{const bed=getBedForPlant(plant);const fit=bed?fitPlantToBed(plant,bed).score:null;return `<tr><td><strong>${escapeHtml(plant.name)}</strong><br><span class="muted">${escapeHtml(plant.latin||'')}</span></td><td>${plant.status==='planted'?'posadzona':'planowana'}</td><td>${escapeHtml(bed?.name||'poza rabatą')}</td><td>${fit===null?'—':fit+'%'}</td><td>${plant.spread} × ${plant.height} cm</td><td>${plant.bloomMonths.join(', ')||'—'}</td></tr>`}).join('')}
@@ -2104,6 +2109,7 @@ const adaptImportedBackup=(parsed:any)=>{
       source:'planner',
       plants:parsed.plants.map((plant:Partial<PlantState>,i:number)=>normalisePlant(plant,i)),
       beds:Array.isArray(parsed.beds) ? parsed.beds.map((bed:Partial<BedState>,i:number)=>normaliseBed(bed,i)) : clone(initialBeds),
+      elements:Array.isArray(parsed.elements) ? parsed.elements.map((item:Partial<GardenElementState>,i:number)=>normaliseElement(item,i)) : [],
       simulation:parsed.simulation,
       layers:parsed.layers,
       gardenWidthM:parsed.project?.gardenWidthM ?? parsed.gardenWidthM,
@@ -2120,6 +2126,10 @@ const adaptImportedBackup=(parsed:any)=>{
   const rawBeds=firstArray(
     parsed?.sectors,parsed?.beds,root?.sectors,root?.beds,
     parsed?.garden?.sectors,parsed?.project?.sectors,
+  );
+  const rawElements=firstArray(
+    parsed?.gardenElements,parsed?.elements,root?.gardenElements,root?.elements,
+    parsed?.garden?.elements,parsed?.project?.elements,
   );
 
   if (!rawPlants?.length) throw new Error('Brak roślin w backupie');
@@ -2171,10 +2181,30 @@ const adaptImportedBackup=(parsed:any)=>{
       })
     : clone(initialBeds);
 
+  const elements=(rawElements||[]).map((raw:any,index:number)=>{
+    const bounds=raw.bounds || raw.layout || raw.rect || {};
+    const rawType=String(raw.type || raw.kind || raw.category || 'structure').toLowerCase();
+    const type:GardenElementType=
+      rawType.includes('path') || rawType.includes('ście') ? 'path' :
+      rawType.includes('terr') || rawType.includes('deck') ? 'terrace' :
+      rawType.includes('water') || rawType.includes('pond') || rawType.includes('wod') ? 'water' :
+      'structure';
+    return normaliseElement({
+      id:String(raw.id ?? raw.uuid ?? `element-mobile-${index}`),
+      type,
+      name:raw.name || raw.title || elementLabels[type],
+      x:raw.x ?? bounds.x,
+      y:raw.y ?? bounds.y,
+      width:raw.width ?? bounds.width,
+      height:raw.height ?? bounds.height,
+    },index);
+  });
+
   return {
     source:'mobile',
     plants,
     beds,
+    elements,
     simulation:parsed?.simulation || root?.simulation,
     layers:parsed?.layers || root?.layers,
     gardenWidthM:parsed?.gardenWidthM ?? root?.gardenWidthM ?? root?.widthMeters ?? root?.widthM,
@@ -2218,6 +2248,7 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     pushHistory();
     state.plants=imported.plants;
     state.beds=imported.beds;
+    state.elements=Array.isArray(imported.elements) ? imported.elements : [];
     state.gardenWidthM=clamp(Number(imported.gardenWidthM)||20,2,200);
     const gardenWidth=q<HTMLInputElement>('[data-garden-width]');
     if (gardenWidth) gardenWidth.value=String(state.gardenWidthM);
