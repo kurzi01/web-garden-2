@@ -67,7 +67,7 @@ type PlantPhotoState = {
   dataUrl:string;
 };
 
-type Selection = { type: 'plant' | 'bed' | 'element'; id: string } | null;
+type PlannerSelection = { type: 'plant' | 'bed' | 'element'; id: string } | null;
 
 type PlannerState = {
   zoom: number;
@@ -83,7 +83,7 @@ type PlannerState = {
   boundary: PointState[];
   careEvents: CareEventState[];
   photos: PlantPhotoState[];
-  selected: Selection;
+  selected: PlannerSelection;
 };
 
 type FitResult = {
