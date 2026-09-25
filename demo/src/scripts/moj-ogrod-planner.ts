@@ -3,6 +3,7 @@ type Sun = 'sun' | 'partial' | 'shade';
 type Moisture = 'dry' | 'normal' | 'moist';
 type SoilPh = 'acid' | 'neutral' | 'alkaline';
 type FrontEdge = 'top' | 'bottom' | 'left' | 'right';
+type PlantStatus = 'planted' | 'planned';
 
 type PlantState = {
   id: string;
@@ -21,6 +22,7 @@ type PlantState = {
   moisture: Moisture[];
   ph: SoilPh[];
   soil: string;
+  status: PlantStatus;
 };
 
 type BedState = {
@@ -43,6 +45,8 @@ type PlannerState = {
   snap: boolean;
   growthYear: number;
   currentMonth: number;
+  showPlanted: boolean;
+  showPlanned: boolean;
   plants: PlantState[];
   beds: BedState[];
   selected: Selection;
@@ -53,8 +57,9 @@ type FitResult = {
   issues: string[];
 };
 
-const STORAGE_KEY = 'moj-ogrod-planner-v5';
-const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
+const STORAGE_KEY = 'moj-ogrod-planner-v6';
+const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
+const BUDGET_STORAGE_KEY = 'moj-ogrod-budget-prices-v1';
 const SNAP_STEP = 2;
 const HISTORY_LIMIT = 40;
 
@@ -83,7 +88,7 @@ const seasonLabels: Record<Season,string> = {
   winter:'zima',
 };
 
-const catalog: Array<Omit<PlantState,'id'|'x'|'y'>> = [
+const catalog: Array<Omit<PlantState,'id'|'x'|'y'|'status'>> = [
   { name:'Hortensja bukietowa', latin:'Hydrangea paniculata', short:'H', spacing:90, height:180, spread:180, bloomMonths:[7,8,9,10], evergreen:false, seasons:['summer','autumn'], sun:['sun','partial'], moisture:['normal','moist'], ph:['acid','neutral','alkaline'], soil:'żyzna, próchniczna i przepuszczalna' },
   { name:'Sosna bośniacka Compact Gem', latin:"Pinus heldreichii 'Compact Gem'", short:'S', spacing:120, height:250, spread:200, bloomMonths:[], evergreen:true, seasons:['spring','summer','autumn','winter'], sun:['sun'], moisture:['dry','normal'], ph:['acid','neutral','alkaline'], soil:'przepuszczalna; bez zastoin wody' },
   { name:'Paproć ogrodowa', latin:'Dryopteris', short:'P', spacing:55, height:90, spread:75, bloomMonths:[], evergreen:false, seasons:['spring','summer','autumn'], sun:['shade','partial'], moisture:['moist'], ph:['acid','neutral','alkaline'], soil:'próchniczna, stale lekko wilgotna' },
@@ -99,12 +104,12 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 const catalogByName = new Map(catalog.map(plant => [plant.name, plant]));
 
 const initialPlants: PlantState[] = [
-  { id:'p1', ...clone(catalog[0]), x:22, y:25 },
-  { id:'p2', ...clone(catalog[1]), x:34, y:30 },
-  { id:'p3', ...clone(catalog[2]), x:72, y:29 },
-  { id:'p4', ...clone(catalog[3]), x:80, y:39 },
-  { id:'p5', ...clone(catalog[4]), x:38, y:75 },
-  { id:'p6', ...clone(catalog[5]), x:53, y:76 },
+  { id:'p1', ...clone(catalog[0]), x:22, y:25, status:'planted' },
+  { id:'p2', ...clone(catalog[1]), x:34, y:30, status:'planted' },
+  { id:'p3', ...clone(catalog[2]), x:72, y:29, status:'planted' },
+  { id:'p4', ...clone(catalog[3]), x:80, y:39, status:'planned' },
+  { id:'p5', ...clone(catalog[4]), x:38, y:75, status:'planned' },
+  { id:'p6', ...clone(catalog[5]), x:53, y:76, status:'planned' },
 ];
 
 const initialBeds: BedState[] = [
@@ -118,6 +123,8 @@ const defaultState: PlannerState = {
   snap:true,
   growthYear:3,
   currentMonth:0,
+  showPlanted:true,
+  showPlanned:true,
   plants:clone(initialPlants),
   beds:clone(initialBeds),
   selected:{ type:'plant', id:'p1' },
@@ -142,6 +149,9 @@ const normalisePlant = (input: Partial<PlantState> & { name?: string }, index = 
     moisture: Array.isArray(input.moisture) && input.moisture.length ? input.moisture as Moisture[] : clone(fallback.moisture),
     ph: Array.isArray(input.ph) && input.ph.length ? input.ph as SoilPh[] : clone(fallback.ph),
     soil: input.soil || fallback.soil,
+    status: input.status === 'planted' || input.status === 'planned'
+      ? input.status
+      : index < 3 ? 'planted' : 'planned',
   };
 };
 
@@ -168,6 +178,8 @@ const loadState = (): PlannerState => {
       snap: parsed.snap ?? true,
       growthYear: clamp(Number(parsed.growthYear) || 3, 1, 5),
       currentMonth: clamp(Number(parsed.currentMonth) || 0, 0, 12),
+      showPlanted: parsed.showPlanted ?? true,
+      showPlanned: parsed.showPlanned ?? true,
       plants: Array.isArray(parsed.plants) ? parsed.plants.map((p,i)=>normalisePlant(p,i)) : clone(initialPlants),
       beds: Array.isArray(parsed.beds) ? parsed.beds.map((b,i)=>normaliseBed(b,i)) : clone(initialBeds),
       selected: parsed.selected ?? null,
@@ -406,7 +418,7 @@ const createBedElement = (b:BedState) => {
   scene.appendChild(el);
 };
 
-const templateFromLibraryItem = (item:HTMLElement): Omit<PlantState,'id'|'x'|'y'> => ({
+const templateFromLibraryItem = (item:HTMLElement): Omit<PlantState,'id'|'x'|'y'|'status'> => ({
   name:item.dataset.libraryName || 'Roślina',
   latin:item.dataset.libraryLatin,
   short:item.dataset.libraryShort || 'R',
@@ -453,7 +465,7 @@ const bestBedForPlant = (plant:PlantState) => [...state.beds]
     return coverageForBed(a)-coverageForBed(b);
   })[0];
 
-const addPlantFromTemplate = (template:Omit<PlantState,'id'|'x'|'y'>) => {
+const addPlantFromTemplate = (template:Omit<PlantState,'id'|'x'|'y'|'status'>) => {
   pushHistory();
   const bed = getContextBed();
   const position = bed ? candidatePosition(bed,template.spread*growthFactor()) : {x:50,y:50};
@@ -461,6 +473,7 @@ const addPlantFromTemplate = (template:Omit<PlantState,'id'|'x'|'y'>) => {
     id:`p${Date.now()}`,
     ...clone(template),
     ...position,
+    status:'planned',
   };
   state.plants.push(plant);
   state.selected = {type:'plant',id:plant.id};
