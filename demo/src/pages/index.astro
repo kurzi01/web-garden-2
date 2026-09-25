@@ -4,6 +4,7 @@ import '../styles/moj-ogrod-planner.scss';
 const nav = [
   ['Plan ogrodu', 'aktywny', 'planner'],
   ['Rabaty i sektory', '3', 'planner'],
+  ['Elementy ogrodu', '', 'planner'],
   ['Rośliny', '8 / 210', 'planner'],
   ['Mój ogród', '', 'garden'],
   ['Zakupy', '', 'shopping'],
@@ -61,17 +62,19 @@ const libraryPlants = [
       <div class="planner-body">
         <aside class="sidebar left">
           <div class="section-kicker">Projekt</div>
-          {nav.slice(0, 4).map(([label, count, view], i) => (
+          {nav.slice(0, 5).map(([label, count, view], i) => (
             <button class:list={['nav-item', { active: i === 0 }]} data-open-view={view}>
               <span>{label}</span>
               {label === 'Mój ogród'
                 ? <small data-nav-garden-count>0</small>
-                : count && <small>{count}</small>}
+                : label === 'Elementy ogrodu'
+                  ? <small data-nav-elements-count>0</small>
+                  : count && <small>{count}</small>}
             </button>
           ))}
 
           <div class="section-kicker">Planowanie</div>
-          {nav.slice(4).map(([label, count, view]) => (
+          {nav.slice(5).map(([label, count, view]) => (
             <button class="nav-item" data-open-view={view}>
               <span>{label}</span>
               {label === 'Zakupy'
@@ -139,6 +142,15 @@ const libraryPlants = [
               <button class="ghost-btn active-tool">Wybierz</button>
               <button class="ghost-btn" data-add-bed>Dodaj rabatę</button>
               <button class="ghost-btn" data-add-plant>Dodaj roślinę</button>
+              <label class="element-add-control">
+                <select data-element-type aria-label="Typ elementu ogrodu">
+                  <option value="path">Ścieżka</option>
+                  <option value="terrace">Taras</option>
+                  <option value="water">Woda</option>
+                  <option value="structure">Konstrukcja</option>
+                </select>
+                <button class="ghost-btn" type="button" data-add-element>Dodaj element</button>
+              </label>
               <button class="ghost-btn" data-measure>Zmierz</button>
               <button class="ghost-btn" data-focus-context>Fokus rabaty</button>
               <button class="ghost-btn" data-toggle-snap>Snap: ON</button>
@@ -194,6 +206,7 @@ const libraryPlants = [
             </div>
             <div class="canvas-help">Shift/Ctrl + klik = multi-select · Pędzel sadzi serię wybranego gatunku · Delete usuwa całe zaznaczenie</div>
             <div class="canvas-legend">
+              <span><i class="legend-box element"></i>element ogrodu</span>
               <span><i class="legend-dot planted"></i>pasuje</span>
               <span><i class="legend-dot mismatch"></i>stanowisko</span>
               <span><i class="legend-dot collision"></i>kolizja</span>
@@ -284,6 +297,7 @@ const libraryPlants = [
             <div class="property-row"><span>Rozstaw</span><strong data-inspector-spacing>—</strong></div>
             <div class="property-row"><span>Szerokość docelowa</span><strong data-inspector-spread>—</strong></div>
             <div class="property-row"><span>Wysokość docelowa</span><strong data-inspector-height>—</strong></div>
+            <div class="property-row" data-element-geometry-row hidden><span>Wymiary elementu</span><strong data-inspector-element-size>—</strong></div>
           </div>
 
           <div class="panel-card" data-plant-requirements>
