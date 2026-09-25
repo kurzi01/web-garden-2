@@ -438,3 +438,66 @@ button,input,select { font:inherit; }
   .simulation-bar { align-items:flex-start; flex-direction:column; gap:5px; }
   .simulation-months { width:100%; }
 }
+
+
+/* --- Planting designer tools --- */
+.workspace {
+  grid-template-rows:auto auto auto 1fr auto;
+}
+
+.designer-strip {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:8px 14px;
+  border-bottom:1px solid var(--mg-line);
+  background:rgba(244,246,240,.9);
+}
+
+.designer-label,
+.designer-actions {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.designer-label strong {
+  font-size:11px;
+  white-space:nowrap;
+}
+
+.designer-actions {
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.plant-dot {
+  width:var(--plant-size,36px);
+  height:var(--plant-size,36px);
+  transition:width 140ms ease,height 140ms ease,opacity 140ms ease,filter 140ms ease,box-shadow 140ms ease;
+}
+
+.plant-dot.multi-selected {
+  outline:2px dashed rgba(48,93,61,.55);
+  outline-offset:5px;
+}
+
+.planner-scene.paint-mode,
+.planner-scene.paint-mode .bed {
+  cursor:crosshair;
+}
+
+.planner-scene.paint-mode .plant-dot {
+  cursor:not-allowed;
+}
+
+@media (max-width:1380px) {
+  .designer-strip {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .designer-actions {
+    justify-content:flex-start;
+  }
+}
