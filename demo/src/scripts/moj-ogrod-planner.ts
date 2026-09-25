@@ -5,6 +5,7 @@ type SoilPh = 'acid' | 'neutral' | 'alkaline';
 type FrontEdge = 'top' | 'bottom' | 'left' | 'right';
 type PlantStatus = 'planted' | 'planned';
 type GardenElementType = 'path' | 'terrace' | 'water' | 'structure';
+type CareEventType = 'planting' | 'watering' | 'fertilizing' | 'pruning' | 'health' | 'note';
 type PointState = { x:number; y:number };
 
 type PlantState = {
@@ -50,6 +51,22 @@ type GardenElementState = {
   height: number;
 };
 
+type CareEventState = {
+  id:string;
+  plantId:string;
+  type:CareEventType;
+  date:string;
+  note:string;
+};
+
+type PlantPhotoState = {
+  id:string;
+  plantId:string;
+  date:string;
+  name:string;
+  dataUrl:string;
+};
+
 type Selection = { type: 'plant' | 'bed' | 'element'; id: string } | null;
 
 type PlannerState = {
@@ -64,6 +81,8 @@ type PlannerState = {
   beds: BedState[];
   elements: GardenElementState[];
   boundary: PointState[];
+  careEvents: CareEventState[];
+  photos: PlantPhotoState[];
   selected: Selection;
 };
 
@@ -72,8 +91,8 @@ type FitResult = {
   issues: string[];
 };
 
-const STORAGE_KEY = 'moj-ogrod-planner-v8';
-const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v7','moj-ogrod-planner-v6','moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
+const STORAGE_KEY = 'moj-ogrod-planner-v9';
+const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v8','moj-ogrod-planner-v7','moj-ogrod-planner-v6','moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
 const BUDGET_STORAGE_KEY = 'moj-ogrod-budget-prices-v1';
 const SNAP_STEP = 2;
 const HISTORY_LIMIT = 40;
@@ -95,6 +114,15 @@ const elementLabels:Record<GardenElementType,string>={
   terrace:'Taras',
   water:'Woda',
   structure:'Konstrukcja',
+};
+
+const careEventLabels:Record<CareEventType,string>={
+  planting:'Sadzenie',
+  watering:'Podlewanie',
+  fertilizing:'Nawożenie',
+  pruning:'Cięcie',
+  health:'Zdrowie / obserwacja',
+  note:'Notatka',
 };
 
 const phLabels: Record<SoilPh,string> = {
@@ -157,6 +185,8 @@ const defaultState: PlannerState = {
   beds:clone(initialBeds),
   elements:[],
   boundary:clone(defaultBoundary),
+  careEvents:[],
+  photos:[],
   selected:{ type:'plant', id:'p1' },
 };
 
@@ -229,6 +259,8 @@ const loadState = (): PlannerState => {
       boundary:Array.isArray(parsed.boundary) && parsed.boundary.length>=3
         ? parsed.boundary.map(point=>({x:clamp(Number(point.x)||0,0,100),y:clamp(Number(point.y)||0,0,100)}))
         : clone(defaultBoundary),
+      careEvents:Array.isArray(parsed.careEvents) ? parsed.careEvents : [],
+      photos:Array.isArray(parsed.photos) ? parsed.photos : [],
       selected: parsed.selected ?? null,
     };
   } catch {
@@ -414,6 +446,8 @@ const modelSnapshot = () => JSON.stringify({
   beds:state.beds,
   elements:state.elements,
   boundary:state.boundary,
+  careEvents:state.careEvents,
+  photos:state.photos,
   selected:state.selected,
 });
 
@@ -435,11 +469,13 @@ const pushHistory = () => {
 };
 
 const restoreModel = (raw:string) => {
-  const parsed = JSON.parse(raw) as Pick<PlannerState,'plants'|'beds'|'elements'|'boundary'|'selected'>;
+  const parsed = JSON.parse(raw) as Pick<PlannerState,'plants'|'beds'|'elements'|'boundary'|'careEvents'|'photos'|'selected'>;
   state.plants = parsed.plants.map((p,i)=>normalisePlant(p,i));
   state.beds = parsed.beds.map((b,i)=>normaliseBed(b,i));
   state.elements = Array.isArray(parsed.elements) ? parsed.elements.map((item,i)=>normaliseElement(item,i)) : [];
   state.boundary = Array.isArray(parsed.boundary) && parsed.boundary.length>=3 ? clone(parsed.boundary) : clone(defaultBoundary);
+  state.careEvents = Array.isArray(parsed.careEvents) ? clone(parsed.careEvents) : [];
+  state.photos = Array.isArray(parsed.photos) ? clone(parsed.photos) : [];
   state.selected = parsed.selected ?? null;
   syncScene();
   scheduleSave();
