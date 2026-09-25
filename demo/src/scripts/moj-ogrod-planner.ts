@@ -170,7 +170,8 @@ if (!scene) throw new Error('Planner scene missing.');
 
 let saveTimer = 0;
 let interaction:
-  | { type:'plant'|'bed'; id:string; offsetX:number; offsetY:number }
+  | { type:'plant'; id:string; offsetX:number; offsetY:number }
+  | { type:'bed'; id:string; offsetX:number; offsetY:number; startBedX:number; startBedY:number; members:Array<{id:string;x:number;y:number}> }
   | { type:'resize'; id:string; startX:number; startY:number; startW:number; startH:number }
   | null = null;
 
@@ -638,7 +639,15 @@ scene.addEventListener('pointerdown', event => {
   if (bedEl?.dataset.bedId) {
     const rect=bedEl.getBoundingClientRect();
     pushHistory();
-    interaction={type:'bed',id:bedEl.dataset.bedId,offsetX:event.clientX-rect.left,offsetY:event.clientY-rect.top};
+    interaction={
+      type:'bed',
+      id:bedEl.dataset.bedId,
+      offsetX:event.clientX-rect.left,
+      offsetY:event.clientY-rect.top,
+      startBedX:b.x,
+      startBedY:b.y,
+      members:plantsInBed(b).map(p=>({id:p.id,x:p.x,y:p.y})),
+    };
     state.selected={type:'bed',id:bedEl.dataset.bedId};
     bedEl.setPointerCapture(event.pointerId);
     bedEl.classList.add('dragging');
@@ -662,11 +671,23 @@ scene.addEventListener('pointermove', event => {
     p.y=clamp(snap(((event.clientY-rect.top-interaction.offsetY)/rect.height)*100),3,97);
     setPlantPosition(el,p);
   } else if (interaction.type==='bed') {
-    const b=state.beds.find(x=>x.id===interaction?.id);
+    const b=state.beds.find(x=>x.id===interaction.id);
     const el=scene.querySelector<HTMLElement>(`[data-bed-id="${interaction.id}"]`);
     if (!b||!el) return;
-    b.x=clamp(snap(((event.clientX-rect.left-interaction.offsetX)/rect.width)*100),1,99-b.width);
-    b.y=clamp(snap(((event.clientY-rect.top-interaction.offsetY)/rect.height)*100),1,99-b.height);
+    const nextX=clamp(snap(((event.clientX-rect.left-interaction.offsetX)/rect.width)*100),1,99-b.width);
+    const nextY=clamp(snap(((event.clientY-rect.top-interaction.offsetY)/rect.height)*100),1,99-b.height);
+    const dx=nextX-interaction.startBedX;
+    const dy=nextY-interaction.startBedY;
+    b.x=nextX;
+    b.y=nextY;
+    interaction.members.forEach(member=>{
+      const plant=state.plants.find(p=>p.id===member.id);
+      const plantEl=scene.querySelector<HTMLElement>(`[data-plant-id="${member.id}"]`);
+      if (!plant||!plantEl) return;
+      plant.x=clamp(member.x+dx,2,98);
+      plant.y=clamp(member.y+dy,3,97);
+      setPlantPosition(plantEl,plant);
+    });
     setBedGeometry(el,b);
   } else {
     const b=state.beds.find(x=>x.id===interaction?.id);
@@ -759,9 +780,9 @@ const updateBedCondition = (key:'sun'|'moisture'|'ph', value:string) => {
   scheduleSave();
 };
 
-q<HTMLSelectElement>('[data-bed-sun]')?.addEventListener('change',e=>updateBedCondition('sun',e.currentTarget.value));
-q<HTMLSelectElement>('[data-bed-moisture]')?.addEventListener('change',e=>updateBedCondition('moisture',e.currentTarget.value));
-q<HTMLSelectElement>('[data-bed-ph]')?.addEventListener('change',e=>updateBedCondition('ph',e.currentTarget.value));
+q<HTMLSelectElement>('[data-bed-sun]')?.addEventListener('change',e=>updateBedCondition('sun',(e.currentTarget as HTMLSelectElement).value));
+q<HTMLSelectElement>('[data-bed-moisture]')?.addEventListener('change',e=>updateBedCondition('moisture',(e.currentTarget as HTMLSelectElement).value));
+q<HTMLSelectElement>('[data-bed-ph]')?.addEventListener('change',e=>updateBedCondition('ph',(e.currentTarget as HTMLSelectElement).value));
 
 q('[data-auto-layout]')?.addEventListener('click',()=>{
   if (!state.beds.length) return;
@@ -832,7 +853,8 @@ q('[data-export-project]')?.addEventListener('click',()=>{
 
 q('[data-import-project]')?.addEventListener('click',()=>q<HTMLInputElement>('[data-import-input]')?.click());
 q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
-  const file=e.currentTarget.files?.[0];
+  const input=e.currentTarget as HTMLInputElement;
+  const file=input.files?.[0];
   if (!file) return;
   try {
     const parsed=JSON.parse(await file.text());
@@ -849,7 +871,7 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     const badge=q('[data-save-badge]');
     if (badge) badge.textContent='błąd importu';
   } finally {
-    e.currentTarget.value='';
+    input.value='';
   }
 });
 
