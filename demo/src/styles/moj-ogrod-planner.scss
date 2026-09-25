@@ -317,3 +317,124 @@ button,input,select { font:inherit; }
   padding:0 8px;
   font-size:11px;
 }
+
+
+/* --- Growth + monthly season simulation --- */
+.workspace {
+  grid-template-rows:auto auto 1fr auto;
+}
+
+.simulation-bar {
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:7px 14px;
+  border-bottom:1px solid var(--mg-line);
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(10px);
+}
+
+.simulation-growth {
+  display:flex;
+  align-items:center;
+  gap:9px;
+  white-space:nowrap;
+  font-size:11px;
+}
+.simulation-growth strong { font-size:11px; }
+.simulation-growth input[type="range"] {
+  width:112px;
+  accent-color:var(--mg-accent);
+}
+
+.simulation-months {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  overflow-x:auto;
+  padding:2px 0;
+}
+
+.month-chip {
+  min-width:30px;
+  height:28px;
+  padding:0 7px;
+  border:1px solid transparent;
+  border-radius:999px;
+  background:transparent;
+  color:var(--mg-muted);
+  font-size:10px;
+  font-weight:700;
+  cursor:pointer;
+}
+.month-chip:first-child { padding:0 10px; min-width:auto; }
+.month-chip:hover { background:var(--mg-panel-soft); }
+.month-chip.active {
+  background:var(--mg-accent);
+  color:#fff;
+  border-color:var(--mg-accent);
+}
+
+.plant-dot.season-muted {
+  opacity:.52;
+  filter:saturate(.68);
+}
+.plant-dot.blooming {
+  opacity:1;
+  filter:none;
+}
+.plant-dot.blooming::after {
+  content:"";
+  position:absolute;
+  inset:-8px;
+  border-radius:50%;
+  border:2px solid rgba(181,126,67,.6);
+  box-shadow:0 0 0 5px rgba(181,126,67,.1);
+  pointer-events:none;
+}
+
+.bloom-calendar {
+  display:grid;
+  grid-template-columns:repeat(12,minmax(0,1fr));
+  gap:4px;
+}
+.bloom-month {
+  min-width:0;
+  text-align:center;
+  font-size:9px;
+  color:var(--mg-muted);
+}
+.bloom-month span {
+  display:block;
+  margin-bottom:4px;
+}
+.bloom-month i {
+  --bloom-count:0;
+  display:block;
+  height:22px;
+  border-radius:5px;
+  background:
+    linear-gradient(
+      to top,
+      rgba(48,93,61,.72) 0,
+      rgba(48,93,61,.72) calc(var(--bloom-count) * 25%),
+      #edf0e9 calc(var(--bloom-count) * 25%),
+      #edf0e9 100%
+    );
+}
+.bloom-month.active span {
+  color:var(--mg-accent);
+  font-weight:800;
+}
+.bloom-month.selected {
+  outline:2px solid rgba(48,93,61,.22);
+  outline-offset:2px;
+  border-radius:6px;
+}
+
+@media (max-width:1380px) {
+  .simulation-bar { align-items:flex-start; flex-direction:column; gap:5px; }
+  .simulation-months { width:100%; }
+}
