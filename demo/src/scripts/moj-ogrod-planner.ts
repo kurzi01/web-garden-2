@@ -190,6 +190,19 @@ const loadState = (): PlannerState => {
 };
 
 const state = loadState();
+
+const loadBudgetPrices = ():Record<string,number> => {
+  try {
+    const raw=localStorage.getItem(BUDGET_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+const budgetPrices=loadBudgetPrices();
+const saveBudgetPrices=()=>localStorage.setItem(BUDGET_STORAGE_KEY,JSON.stringify(budgetPrices));
+const formatMoney=new Intl.NumberFormat('pl-PL',{style:'currency',currency:'PLN'});
+
 const scene = document.querySelector<HTMLElement>('[data-planner-scene]');
 const q = <T extends Element = HTMLElement>(selector: string) => document.querySelector<T>(selector);
 const qa = <T extends Element = HTMLElement>(selector: string) => Array.from(document.querySelectorAll<T>(selector));
@@ -527,6 +540,10 @@ const renderAnalysis = () => {
     const blooming=state.currentMonth>0 && p.bloomMonths.includes(state.currentMonth);
     el.classList.toggle('blooming', blooming);
     el.classList.toggle('season-muted', state.currentMonth>0 && !blooming && !p.evergreen);
+    el.classList.toggle('layer-hidden',
+      (p.status==='planted' && !state.showPlanted) ||
+      (p.status==='planned' && !state.showPlanned)
+    );
     setPlantPosition(el,p);
     el.dataset.bedName = bed?.name || '';
     if (!bed) outside++;
@@ -562,6 +579,12 @@ const renderAnalysis = () => {
   q('[data-kpi-coverage]')!.textContent = `${avgCoverage}%`;
   q('[data-outside-count]')!.textContent = String(outside);
   q('[data-mismatch-count]')!.textContent = String(mismatchCount);
+  const plantedCount=state.plants.filter(p=>p.status==='planted').length;
+  const plannedCount=state.plants.filter(p=>p.status==='planned').length;
+  const plantedLayer=q('[data-layer-planted-state]');
+  const plannedLayer=q('[data-layer-planned-state]');
+  if (plantedLayer) plantedLayer.textContent=state.showPlanted ? `✓ ${plantedCount}` : `— ${plantedCount}`;
+  if (plannedLayer) plannedLayer.textContent=state.showPlanned ? `✓ ${plannedCount}` : `— ${plannedCount}`;
   q('[data-analysis-score]')!.textContent = `${Math.round(score)}%`;
   (q('[data-analysis-progress]') as HTMLElement).style.width = `${score}%`;
 
@@ -578,6 +601,268 @@ const renderAnalysis = () => {
 
   q('[data-analysis-copy]')!.textContent =
     `Pokrycie: ${avgCoverage}%. Warstwowanie: ${avgLayering}%. Stanowisko: ${mismatchCount} niedopasowanych. Poza rabatami: ${outside}. W kolizji: ${collisionCount}.`;
+};
+
+
+const escapeHtml=(value:string)=>value
+  .replaceAll('&','&amp;')
+  .replaceAll('<','&lt;')
+  .replaceAll('>','&gt;')
+  .replaceAll('"','&quot;');
+
+const soilLitersForPlant=(plant:PlantState)=>{
+  if (plant.spread>=150) return 40;
+  if (plant.spread>=80) return 25;
+  return 15;
+};
+
+const fertilizerForPlant=(plant:PlantState)=>{
+  const name=plant.name.toLowerCase();
+  if (name.includes('hortens')) return 'Nawóz do hortensji';
+  if (name.includes('sosna') || plant.evergreen) return 'Nawóz do iglaków i zimozielonych';
+  if (name.includes('hakone') || name.includes('rozplen')) return 'Nawóz do traw ozdobnych';
+  return 'Nawóz organiczny do bylin';
+};
+
+type ShoppingRow = {
+  section:'Rośliny'|'Podłoże'|'Nawożenie';
+  name:string;
+  quantity:number;
+  unit:string;
+  key:string;
+  note?:string;
+};
+
+const buildShoppingRows=():ShoppingRow[]=>{
+  const planned=state.plants.filter(plant=>plant.status==='planned');
+  const plantGroups=new Map<string,number>();
+  const soilGroups=new Map<string,number>();
+  const fertilizerGroups=new Map<string,number>();
+
+  planned.forEach(plant=>{
+    plantGroups.set(plant.name,(plantGroups.get(plant.name)||0)+1);
+    soilGroups.set(plant.soil,(soilGroups.get(plant.soil)||0)+soilLitersForPlant(plant));
+    const fertilizer=fertilizerForPlant(plant);
+    fertilizerGroups.set(fertilizer,(fertilizerGroups.get(fertilizer)||0)+1);
+  });
+
+  const rows:ShoppingRow[]=[];
+  plantGroups.forEach((quantity,name)=>rows.push({
+    section:'Rośliny',
+    name,
+    quantity,
+    unit:'szt.',
+    key:encodeURIComponent(`plant:${name}`),
+  }));
+  soilGroups.forEach((liters,name)=>rows.push({
+    section:'Podłoże',
+    name:`Podłoże: ${name}`,
+    quantity:Math.max(1,Math.ceil(liters/20)),
+    unit:'worek 20 L',
+    key:encodeURIComponent(`soil:${name}`),
+    note:`zapotrzebowanie ok. ${liters} L`,
+  }));
+  fertilizerGroups.forEach((plantCount,name)=>rows.push({
+    section:'Nawożenie',
+    name,
+    quantity:Math.max(1,Math.ceil(plantCount/6)),
+    unit:'opak.',
+    key:encodeURIComponent(`fertilizer:${name}`),
+    note:`dla ${plantCount} planowanych roślin`,
+  }));
+  return rows;
+};
+
+const renderShoppingView=()=>{
+  const container=q<HTMLElement>('[data-shopping-list]');
+  if (!container) return;
+  const rows=buildShoppingRows();
+  const plannedCount=state.plants.filter(plant=>plant.status==='planned').length;
+
+  const bySection=new Map<string,ShoppingRow[]>();
+  rows.forEach(row=>{
+    const list=bySection.get(row.section)||[];
+    list.push(row);
+    bySection.set(row.section,list);
+  });
+
+  container.innerHTML=rows.length
+    ? [...bySection.entries()].map(([section,items])=>`
+      <section class="shopping-group">
+        <div class="shopping-group-head">
+          <h3>${escapeHtml(section)}</h3>
+          <span>${items.length} pozycji</span>
+        </div>
+        ${items.map(row=>{
+          const price=budgetPrices[row.key] ?? 0;
+          const lineTotal=price*row.quantity;
+          return `
+            <div class="shopping-row">
+              <div class="shopping-name">
+                <strong>${escapeHtml(row.name)}</strong>
+                ${row.note ? `<small>${escapeHtml(row.note)}</small>` : ''}
+              </div>
+              <div class="shopping-qty"><strong>${row.quantity}</strong><span>${escapeHtml(row.unit)}</span></div>
+              <label class="shopping-price">
+                <span>cena / jedn.</span>
+                <input type="number" min="0" step="0.01" value="${price || ''}" placeholder="0,00" data-budget-key="${row.key}" />
+              </label>
+              <strong class="shopping-line-total">${formatMoney.format(lineTotal)}</strong>
+            </div>`;
+        }).join('')}
+      </section>`
+    ).join('')
+    : '<div class="empty-state"><strong>Lista zakupów jest pusta.</strong><span>Wszystkie rośliny w projekcie są oznaczone jako posadzone.</span></div>';
+
+  const total=rows.reduce((sum,row)=>sum+(budgetPrices[row.key]||0)*row.quantity,0);
+  const lines=q('[data-shopping-lines]');
+  const plants=q('[data-shopping-plants]');
+  const totalEl=q('[data-shopping-total]');
+  if (lines) lines.textContent=String(rows.length);
+  if (plants) plants.textContent=String(plannedCount);
+  if (totalEl) totalEl.textContent=formatMoney.format(total);
+
+  qa<HTMLInputElement>('[data-budget-key]').forEach(input=>{
+    input.addEventListener('input',()=>{
+      const key=input.dataset.budgetKey;
+      if (!key) return;
+      budgetPrices[key]=Math.max(0,Number(input.value)||0);
+      saveBudgetPrices();
+      renderShoppingView();
+    });
+  });
+
+  const nav=q('[data-nav-shopping-count]');
+  if (nav) nav.textContent=String(plannedCount);
+};
+
+const renderGardenView=()=>{
+  const summary=q<HTMLElement>('[data-garden-summary]');
+  const list=q<HTMLElement>('[data-garden-list]');
+  if (!summary || !list) return;
+  const planted=state.plants.filter(p=>p.status==='planted').length;
+  const planned=state.plants.length-planted;
+
+  summary.innerHTML=`
+    <div><span>Wszystkie</span><strong>${state.plants.length}</strong></div>
+    <div><span>Posadzone</span><strong>${planted}</strong></div>
+    <div><span>Planowane</span><strong>${planned}</strong></div>
+    <div><span>Rabaty</span><strong>${state.beds.length}</strong></div>
+  `;
+
+  list.innerHTML=state.plants.length
+    ? `
+      <div class="garden-row garden-row-head">
+        <span>Roślina</span><span>Rabata</span><span>Status</span><span>Stanowisko</span><span></span>
+      </div>
+      ${[...state.plants]
+        .sort((a,b)=>a.status.localeCompare(b.status) || a.name.localeCompare(b.name,'pl'))
+        .map(plant=>{
+          const bed=getBedForPlant(plant);
+          const fit=bed ? fitPlantToBed(plant,bed).score : null;
+          return `
+            <div class="garden-row">
+              <div class="garden-plant"><span class="library-avatar">${escapeHtml(plant.short)}</span><div><strong>${escapeHtml(plant.name)}</strong><small>${escapeHtml(plant.latin||'')}</small></div></div>
+              <span>${escapeHtml(bed?.name||'poza rabatą')}</span>
+              <select data-garden-status="${plant.id}">
+                <option value="planted" ${plant.status==='planted'?'selected':''}>posadzona</option>
+                <option value="planned" ${plant.status==='planned'?'selected':''}>planowana</option>
+              </select>
+              <span class="fit-pill ${fit===100?'good':fit===null?'neutral':'warn'}">${fit===null?'—':fit+'%'}</span>
+              <button class="ghost-btn compact" data-focus-plant="${plant.id}">↗</button>
+            </div>`;
+        }).join('')}
+    `
+    : '<div class="empty-state"><strong>Brak roślin w projekcie.</strong></div>';
+
+  const nav=q('[data-nav-garden-count]');
+  if (nav) nav.textContent=String(state.plants.length);
+};
+
+const bedIssues=(bed:BedState)=>{
+  const issues:string[]=[];
+  const plants=plantsInBed(bed);
+  if (!plants.length) return ['rabata jest pusta'];
+  if (coverageForBed(bed)<25) issues.push('niskie pokrycie');
+  if (bedFitPercent(bed)<80) issues.push('dobór do stanowiska');
+  if (layeringScore(bed)<65) issues.push('warstwowanie');
+  if (bloomContinuity(bed).active<4 && plants.length>=3) issues.push('krótki sezon kwitnienia');
+  if (!repetitionSummary(bed).groups && plants.length>=4) issues.push('brak rytmu');
+  return issues;
+};
+
+const renderStudioView=()=>{
+  const grid=q<HTMLElement>('[data-studio-grid]');
+  if (!grid) return;
+  grid.innerHTML=state.beds.map(bed=>{
+    const plants=plantsInBed(bed);
+    const issues=bedIssues(bed);
+    return `
+      <article class="studio-card">
+        <div class="studio-card-head">
+          <div><span>Rabata</span><h3>${escapeHtml(bed.name)}</h3></div>
+          <span class="fit-pill ${issues.length?'warn':'good'}">${issues.length ? issues.length+' uwag' : 'OK'}</span>
+        </div>
+        <div class="studio-metrics">
+          <div><span>Rośliny</span><strong>${plants.length}</strong></div>
+          <div><span>Pokrycie</span><strong>${coverageForBed(bed)}%</strong></div>
+          <div><span>Stanowisko</span><strong>${bedFitPercent(bed)}%</strong></div>
+          <div><span>Warstwowanie</span><strong>${layeringScore(bed)}%</strong></div>
+          <div><span>Kwitnienie III–X</span><strong>${bloomContinuity(bed).active}/8</strong></div>
+        </div>
+        <p>${issues.length ? escapeHtml(issues.join(' · ')) : 'Brak problemów wykrytych przez aktualne heurystyki.'}</p>
+        <button class="ghost-btn" data-focus-bed="${bed.id}">Otwórz rabatę w planerze</button>
+      </article>`;
+  }).join('');
+};
+
+const renderProjectAnalysisView=()=>{
+  const container=q<HTMLElement>('[data-project-analysis]');
+  if (!container) return;
+  const collisions=getCollisionIds();
+  const outside=state.plants.filter(plant=>!getBedForPlant(plant));
+  const mismatch=state.plants.filter(plant=>{
+    const bed=getBedForPlant(plant);
+    return bed ? fitPlantToBed(plant,bed).score<100 : false;
+  });
+  const planned=state.plants.filter(plant=>plant.status==='planned');
+  const bedWarnings=state.beds.flatMap(bed=>bedIssues(bed).map(issue=>({bed,issue})));
+
+  container.innerHTML=`
+    <div class="analysis-kpis">
+      <div><span>Rośliny</span><strong>${state.plants.length}</strong><small>${planned.length} planowanych</small></div>
+      <div><span>Kolizje</span><strong>${collisions.size}</strong><small>przy roku ${state.growthYear}/5</small></div>
+      <div><span>Stanowisko</span><strong>${mismatch.length}</strong><small>niedopasowanych</small></div>
+      <div><span>Poza rabatą</span><strong>${outside.length}</strong><small>do przypisania</small></div>
+    </div>
+    <section class="analysis-list">
+      <h3>Priorytety</h3>
+      ${outside.map(plant=>`<div class="analysis-item danger"><strong>${escapeHtml(plant.name)}</strong><span>Roślina znajduje się poza rabatą.</span></div>`).join('')}
+      ${mismatch.map(plant=>{
+        const bed=getBedForPlant(plant)!;
+        return `<div class="analysis-item warn"><strong>${escapeHtml(plant.name)}</strong><span>Nie pasuje w 100% do „${escapeHtml(bed.name)}”.</span></div>`;
+      }).join('')}
+      ${bedWarnings.map(({bed,issue})=>`<div class="analysis-item"><strong>${escapeHtml(bed.name)}</strong><span>${escapeHtml(issue)}</span></div>`).join('')}
+      ${!outside.length&&!mismatch.length&&!bedWarnings.length ? '<div class="empty-state"><strong>Brak istotnych problemów.</strong><span>Projekt przechodzi aktualne reguły analizy.</span></div>' : ''}
+    </section>
+  `;
+};
+
+const renderMigrationViews=()=>{
+  renderGardenView();
+  renderShoppingView();
+  renderStudioView();
+  renderProjectAnalysisView();
+};
+
+const openWorkspaceView=(view:string)=>{
+  qa<HTMLElement>('[data-workspace-view]').forEach(panel=>panel.hidden=panel.dataset.workspaceView!==view);
+  qa<HTMLElement>('[data-open-view]').forEach(button=>button.classList.toggle('active',button.dataset.openView===view));
+  if (view==='planner') {
+    qa<HTMLElement>('[data-workspace-view]').forEach(panel=>panel.hidden=true);
+    const plannerButton=q<HTMLElement>('[data-open-view="planner"]');
+    plannerButton?.classList.add('active');
+  }
 };
 
 const updateComposition = (bed?:BedState) => {
@@ -772,6 +1057,7 @@ const clearMultiSelection = () => {
   paintMode=false;
   paintSourceId=null;
   updateDesignerTools();
+  renderMigrationViews();
 };
 
 const renderSelection = () => {
@@ -793,7 +1079,9 @@ const renderSelection = () => {
       ? getBedForPlant(plant)
       : undefined;
 
+  const statusSelect=q<HTMLSelectElement>('[data-inspector-status]');
   if (plant) {
+    if (statusSelect) { statusSelect.disabled=false; statusSelect.value=plant.status; }
     q('[data-inspector-title]')!.textContent = plant.name;
     q('[data-inspector-type]')!.textContent = 'roślina';
     q('[data-inspector-bed]')!.textContent = bed?.name || 'poza rabatą';
@@ -802,6 +1090,7 @@ const renderSelection = () => {
     q('[data-inspector-spread]')!.textContent = `${Math.round(effectiveSpread(plant))} / ${plant.spread} cm`;
     q('[data-inspector-height]')!.textContent = `${Math.round(effectiveHeight(plant))} / ${plant.height} cm`;
   } else if (bed) {
+    if (statusSelect) statusSelect.disabled=true;
     q('[data-inspector-title]')!.textContent = bed.name;
     q('[data-inspector-type]')!.textContent = 'rabata';
     q('[data-inspector-bed]')!.textContent = `${plantsInBed(bed).length} roślin`;
@@ -810,6 +1099,7 @@ const renderSelection = () => {
     q('[data-inspector-spread]')!.textContent = '—';
     q('[data-inspector-height]')!.textContent = '—';
   } else {
+    if (statusSelect) statusSelect.disabled=true;
     q('[data-inspector-title]')!.textContent='Plan ogrodu';
     q('[data-inspector-type]')!.textContent='projekt';
     q('[data-inspector-bed]')!.textContent='—';
@@ -1174,6 +1464,67 @@ q('[data-fit]')?.addEventListener('click',()=>setZoom(.9));
 q('[data-undo]')?.addEventListener('click',undo);
 q('[data-redo]')?.addEventListener('click',redo);
 
+
+qa<HTMLElement>('[data-open-view]').forEach(button=>{
+  button.addEventListener('click',()=>openWorkspaceView(button.dataset.openView||'planner'));
+});
+qa<HTMLElement>('[data-close-view]').forEach(button=>{
+  button.addEventListener('click',()=>openWorkspaceView('planner'));
+});
+
+qa<HTMLButtonElement>('[data-layer-toggle]').forEach(button=>{
+  button.addEventListener('click',()=>{
+    if (button.dataset.layerToggle==='planted') state.showPlanted=!state.showPlanted;
+    if (button.dataset.layerToggle==='planned') state.showPlanned=!state.showPlanned;
+    renderSelection();
+    scheduleSave();
+  });
+});
+
+q<HTMLSelectElement>('[data-inspector-status]')?.addEventListener('change',e=>{
+  if (state.selected?.type!=='plant') return;
+  const plant=state.plants.find(item=>item.id===state.selected?.id);
+  if (!plant) return;
+  pushHistory();
+  plant.status=(e.currentTarget as HTMLSelectElement).value as PlantStatus;
+  renderSelection();
+  scheduleSave();
+});
+
+document.addEventListener('change',event=>{
+  const target=event.target as HTMLSelectElement;
+  if (target.matches('[data-garden-status]')) {
+    const id=target.dataset.gardenStatus;
+    const plant=state.plants.find(item=>item.id===id);
+    if (!plant) return;
+    pushHistory();
+    plant.status=target.value as PlantStatus;
+    renderSelection();
+    scheduleSave();
+  }
+});
+
+document.addEventListener('click',event=>{
+  const target=event.target as HTMLElement;
+  const focusPlant=target.closest<HTMLElement>('[data-focus-plant]');
+  if (focusPlant?.dataset.focusPlant) {
+    const plant=state.plants.find(item=>item.id===focusPlant.dataset.focusPlant);
+    if (!plant) return;
+    setSinglePlantSelection(plant.id);
+    openWorkspaceView('planner');
+    renderSelection();
+  }
+  const focusBed=target.closest<HTMLElement>('[data-focus-bed]');
+  if (focusBed?.dataset.focusBed) {
+    const bed=state.beds.find(item=>item.id===focusBed.dataset.focusBed);
+    if (!bed) return;
+    multiSelectedIds.clear();
+    state.selected={type:'bed',id:bed.id};
+    openWorkspaceView('planner');
+    renderSelection();
+  }
+});
+
 q('[data-toggle-snap]')?.addEventListener('click',()=>{
   state.snap=!state.snap;
   q('[data-toggle-snap]')!.textContent=`Snap: ${state.snap?'ON':'OFF'}`;
@@ -1369,6 +1720,8 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   paintSourceId='p1';
   paintMode=false;
   state.snap=true;
+  state.showPlanted=true;
+  state.showPlanned=true;
   state.growthYear=3;
   state.currentMonth=0;
   syncScene();
@@ -1384,12 +1737,13 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
 q('[data-export-project]')?.addEventListener('click',()=>{
   const payload={
     format:'moj-ogrod-planner',
-    version:5,
+    version:6,
     exportedAt:new Date().toISOString(),
     project:{name:'Ogród domowy',location:'Rzeszów'},
     plants:state.plants,
     beds:state.beds,
     simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
+    layers:{showPlanted:state.showPlanted,showPlanned:state.showPlanned},
   };
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
@@ -1411,6 +1765,10 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     pushHistory();
     state.plants=parsed.plants.map((p:Partial<PlantState>,i:number)=>normalisePlant(p,i));
     state.beds=parsed.beds.map((b:Partial<BedState>,i:number)=>normaliseBed(b,i));
+    if (parsed.layers) {
+      state.showPlanted=parsed.layers.showPlanted ?? true;
+      state.showPlanned=parsed.layers.showPlanned ?? true;
+    }
     if (parsed.simulation) {
       state.growthYear=clamp(Number(parsed.simulation.growthYear)||3,1,5);
       state.currentMonth=clamp(Number(parsed.simulation.currentMonth)||0,0,12);
