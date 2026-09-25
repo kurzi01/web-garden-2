@@ -4,6 +4,7 @@ on:
     branches:
       - '**'
       - '!master'
+      - '!work/migration'
   # pull_request:
 
 jobs:
