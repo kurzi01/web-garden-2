@@ -517,6 +517,22 @@ const createBedElement = (b:BedState) => {
   scene.appendChild(el);
 };
 
+const setElementGeometry=(el:HTMLElement,item:GardenElementState)=>{
+  el.style.left=`${item.x}%`;
+  el.style.top=`${item.y}%`;
+  el.style.width=`${item.width}%`;
+  el.style.height=`${item.height}%`;
+};
+
+const createGardenElement=(item:GardenElementState)=>{
+  const el=document.createElement('button');
+  el.className=`garden-element garden-element-${item.type}`;
+  el.dataset.gardenElementId=item.id;
+  el.innerHTML=`<span class="garden-element-label">${item.name}</span><span class="garden-element-resize" data-resize-element="${item.id}"></span>`;
+  setElementGeometry(el,item);
+  scene.appendChild(el);
+};
+
 const templateFromLibraryItem = (item:HTMLElement): Omit<PlantState,'id'|'x'|'y'|'status'> => ({
   name:item.dataset.libraryName || 'Roślina',
   latin:item.dataset.libraryLatin,
@@ -939,8 +955,10 @@ const renderProjectAnalysisView=()=>{
 const renderMigrationViews=()=>{
   const gardenNav=q('[data-nav-garden-count]');
   const shoppingNav=q('[data-nav-shopping-count]');
+  const elementsNav=q('[data-nav-elements-count]');
   if (gardenNav) gardenNav.textContent=String(state.plants.length);
   if (shoppingNav) shoppingNav.textContent=String(state.plants.filter(plant=>plant.status==='planned').length);
+  if (elementsNav) elementsNav.textContent=String(state.elements.length);
 
   const active=qa<HTMLElement>('[data-workspace-view]').find(panel=>!panel.hidden)?.dataset.workspaceView;
   if (active==='garden') renderGardenView();
@@ -1165,7 +1183,13 @@ const renderSelection = () => {
   scene.querySelectorAll<HTMLElement>('[data-bed-id]').forEach(el => {
     el.classList.toggle('selected', state.selected?.type==='bed' && el.dataset.bedId===state.selected.id);
   });
+  scene.querySelectorAll<HTMLElement>('[data-garden-element-id]').forEach(el=>{
+    el.classList.toggle('selected',state.selected?.type==='element' && el.dataset.gardenElementId===state.selected.id);
+  });
 
+  const element=state.selected?.type==='element'
+    ? state.elements.find(item=>item.id===state.selected?.id)
+    : undefined;
   const plant = state.selected?.type==='plant'
     ? state.plants.find(p=>p.id===state.selected?.id)
     : undefined;
@@ -1176,7 +1200,20 @@ const renderSelection = () => {
       : undefined;
 
   const statusSelect=q<HTMLSelectElement>('[data-inspector-status]');
-  if (plant) {
+  const elementRow=q<HTMLElement>('[data-element-geometry-row]');
+  if (element) {
+    if (statusSelect) statusSelect.disabled=true;
+    if (elementRow) elementRow.hidden=false;
+    q('[data-inspector-title]')!.textContent=element.name;
+    q('[data-inspector-type]')!.textContent=elementLabels[element.type];
+    q('[data-inspector-bed]')!.textContent='element ogrodu';
+    q('[data-inspector-position]')!.textContent=`${Math.round(element.x)} × ${Math.round(element.y)}`;
+    q('[data-inspector-spacing]')!.textContent='—';
+    q('[data-inspector-spread]')!.textContent='—';
+    q('[data-inspector-height]')!.textContent='—';
+    q('[data-inspector-element-size]')!.textContent=`${Math.round(element.width)} × ${Math.round(element.height)}%`;
+  } else if (plant) {
+    if (elementRow) elementRow.hidden=true;
     if (statusSelect) { statusSelect.disabled=false; statusSelect.value=plant.status; }
     q('[data-inspector-title]')!.textContent = plant.name;
     q('[data-inspector-type]')!.textContent = 'roślina';
@@ -1186,6 +1223,7 @@ const renderSelection = () => {
     q('[data-inspector-spread]')!.textContent = `${Math.round(effectiveSpread(plant))} / ${plant.spread} cm`;
     q('[data-inspector-height]')!.textContent = `${Math.round(effectiveHeight(plant))} / ${plant.height} cm`;
   } else if (bed) {
+    if (elementRow) elementRow.hidden=true;
     if (statusSelect) statusSelect.disabled=true;
     q('[data-inspector-title]')!.textContent = bed.name;
     q('[data-inspector-type]')!.textContent = 'rabata';
@@ -1195,6 +1233,7 @@ const renderSelection = () => {
     q('[data-inspector-spread]')!.textContent = '—';
     q('[data-inspector-height]')!.textContent = '—';
   } else {
+    if (elementRow) elementRow.hidden=true;
     if (statusSelect) statusSelect.disabled=true;
     q('[data-inspector-title]')!.textContent='Plan ogrodu';
     q('[data-inspector-type]')!.textContent='projekt';
@@ -1206,7 +1245,7 @@ const renderSelection = () => {
   }
 
   updatePlantRequirements(plant,bed);
-  updateSiteControls(bed);
+  updateSiteControls(element ? undefined : bed);
   updateBedAnalytics(bed);
   renderAnalysis();
   updateLibrary();
@@ -1374,8 +1413,9 @@ const paintPlantAt = (clientX:number,clientY:number) => {
 };
 
 const syncScene = () => {
-  scene.querySelectorAll('[data-plant-id],[data-bed-id]').forEach(el=>el.remove());
+  scene.querySelectorAll('[data-plant-id],[data-bed-id],[data-garden-element-id]').forEach(el=>el.remove());
   state.beds.forEach(createBedElement);
+  state.elements.forEach(createGardenElement);
   state.plants.forEach(createPlantElement);
   renderSelection();
 };
@@ -1415,6 +1455,37 @@ scene.addEventListener('pointerdown', event => {
       paintPlantAt(event.clientX,event.clientY);
       return;
     }
+  }
+
+  const elementResize=target.closest<HTMLElement>('[data-resize-element]');
+  if (elementResize?.dataset.resizeElement) {
+    const item=state.elements.find(x=>x.id===elementResize.dataset.resizeElement);
+    if (!item) return;
+    pushHistory();
+    interaction={type:'element-resize',id:item.id,startX:event.clientX,startY:event.clientY,startW:item.width,startH:item.height};
+    multiSelectedIds.clear();
+    paintMode=false;
+    state.selected={type:'element',id:item.id};
+    elementResize.setPointerCapture(event.pointerId);
+    renderSelection();
+    return;
+  }
+
+  const elementEl=target.closest<HTMLElement>('[data-garden-element-id]');
+  if (elementEl?.dataset.gardenElementId) {
+    const item=state.elements.find(x=>x.id===elementEl.dataset.gardenElementId);
+    if (!item) return;
+    const rect=elementEl.getBoundingClientRect();
+    pushHistory();
+    interaction={type:'element',id:item.id,offsetX:event.clientX-rect.left,offsetY:event.clientY-rect.top};
+    multiSelectedIds.clear();
+    paintMode=false;
+    paintSourceId=null;
+    state.selected={type:'element',id:item.id};
+    elementEl.setPointerCapture(event.pointerId);
+    elementEl.classList.add('dragging');
+    renderSelection();
+    return;
   }
 
   const resize = target.closest<HTMLElement>('[data-resize-bed]');
@@ -1526,6 +1597,22 @@ scene.addEventListener('pointermove', event => {
       plant.y=member.y+dy;
       setPlantPosition(el,plant);
     });
+  } else if (interaction.type==='element') {
+    const item=state.elements.find(x=>x.id===interaction.id);
+    const el=scene.querySelector<HTMLElement>(`[data-garden-element-id="${interaction.id}"]`);
+    if (!item||!el) return;
+    item.x=clamp(snap(((event.clientX-rect.left-interaction.offsetX)/rect.width)*100),1,99-item.width);
+    item.y=clamp(snap(((event.clientY-rect.top-interaction.offsetY)/rect.height)*100),1,99-item.height);
+    setElementGeometry(el,item);
+  } else if (interaction.type==='element-resize') {
+    const item=state.elements.find(x=>x.id===interaction.id);
+    const el=scene.querySelector<HTMLElement>(`[data-garden-element-id="${interaction.id}"]`);
+    if (!item||!el) return;
+    const dx=((event.clientX-interaction.startX)/rect.width)*100;
+    const dy=((event.clientY-interaction.startY)/rect.height)*100;
+    item.width=clamp(snap(interaction.startW+dx),4,99-item.x);
+    item.height=clamp(snap(interaction.startH+dy),3,99-item.y);
+    setElementGeometry(el,item);
   } else if (interaction.type==='bed') {
     const b=state.beds.find(x=>x.id===interaction.id);
     const el=scene.querySelector<HTMLElement>(`[data-bed-id="${interaction.id}"]`);
@@ -1545,8 +1632,8 @@ scene.addEventListener('pointermove', event => {
       setPlantPosition(plantEl,plant);
     });
     setBedGeometry(el,b);
-  } else {
-    const b=state.beds.find(x=>x.id===interaction?.id);
+  } else if (interaction.type==='resize') {
+    const b=state.beds.find(x=>x.id===interaction.id);
     const el=scene.querySelector<HTMLElement>(`[data-bed-id="${interaction.id}"]`);
     if (!b||!el) return;
     const dx=((event.clientX-interaction.startX)/rect.width)*100;
@@ -1710,6 +1797,32 @@ q('[data-add-bed]')?.addEventListener('click',()=>{
   scheduleSave();
 });
 
+q('[data-add-element]')?.addEventListener('click',()=>{
+  const type=(q<HTMLSelectElement>('[data-element-type]')?.value || 'path') as GardenElementType;
+  pushHistory();
+  const defaults:Record<GardenElementType,{width:number;height:number}>={
+    path:{width:28,height:6},
+    terrace:{width:24,height:18},
+    water:{width:18,height:12},
+    structure:{width:12,height:12},
+  };
+  const size=defaults[type];
+  const count=state.elements.filter(item=>item.type===type).length+1;
+  const item:GardenElementState={
+    id:`element-${Date.now()}`,
+    type,
+    name:`${elementLabels[type]} ${count}`,
+    x:40,y:45,width:size.width,height:size.height,
+  };
+  state.elements.push(item);
+  multiSelectedIds.clear();
+  paintMode=false;
+  state.selected={type:'element',id:item.id};
+  createGardenElement(item);
+  renderSelection();
+  scheduleSave();
+});
+
 qa<HTMLElement>('[data-library-item]').forEach(item=>{
   item.addEventListener('click',()=>addPlantFromTemplate(templateFromLibraryItem(item)));
 });
@@ -1859,6 +1972,7 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   localStorage.removeItem(STORAGE_KEY);
   state.plants=clone(initialPlants);
   state.beds=clone(initialBeds);
+  state.elements=[];
   state.selected={type:'plant',id:'p1'};
   multiSelectedIds.clear();
   multiSelectedIds.add('p1');
@@ -2155,8 +2269,10 @@ document.addEventListener('keydown',event=>{
       multiSelectedIds.clear();
       paintSourceId=null;
       paintMode=false;
-    } else {
+    } else if (state.selected.type==='bed') {
       state.beds=state.beds.filter(x=>x.id!==state.selected?.id);
+    } else if (state.selected.type==='element') {
+      state.elements=state.elements.filter(x=>x.id!==state.selected?.id);
     }
     state.selected=null;
     syncScene();
