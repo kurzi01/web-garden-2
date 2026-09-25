@@ -192,6 +192,12 @@ let interaction:
 
 const undoStack: string[] = [];
 const redoStack: string[] = [];
+const multiSelectedIds = new Set<string>();
+let paintMode = false;
+let paintStroke = false;
+let paintSourceId: string | null = null;
+let lastPaintPoint: {x:number;y:number} | null = null;
+let paintSequence = 0;
 
 const snap = (v:number) => state.snap ? Math.round(v / SNAP_STEP) * SNAP_STEP : v;
 const growthFactors = [0,.35,.55,.72,.86,1];
@@ -371,6 +377,7 @@ const setPlantPosition = (el:HTMLElement,p:PlantState) => {
   el.style.left = `${p.x}%`;
   el.style.top = `${p.y}%`;
   el.style.setProperty('--spacing-halo', `${Math.round(clamp(effectiveSpread(p)*.68,44,190))}px`);
+  el.style.setProperty('--plant-size', `${Math.round(clamp(28 + effectiveSpread(p)*.12,30,58))}px`);
 };
 
 const setBedGeometry = (el:HTMLElement,b:BedState) => {
@@ -690,9 +697,74 @@ const updatePlantRequirements = (plant?:PlantState, bed?:BedState) => {
   }
 };
 
+const getSelectedPlants = () => {
+  const ids = multiSelectedIds.size
+    ? [...multiSelectedIds]
+    : state.selected?.type==='plant'
+      ? [state.selected.id]
+      : [];
+  return ids
+    .map(id=>state.plants.find(plant=>plant.id===id))
+    .filter((plant): plant is PlantState => Boolean(plant));
+};
+
+const updateDesignerTools = () => {
+  const plants=getSelectedPlants();
+  const counter=q('[data-selection-count]');
+  if (counter) counter.textContent=`${plants.length} ${plants.length===1?'zaznaczona':'zaznaczone'}`;
+
+  const hasPlant=plants.length>0;
+  qa<HTMLButtonElement>('[data-group-size]').forEach(button=>button.disabled=!hasPlant || plants.length>1);
+
+  const duplicate=q<HTMLButtonElement>('[data-duplicate-selection]');
+  if (duplicate) duplicate.disabled=!hasPlant;
+
+  const paint=q<HTMLButtonElement>('[data-paint-mode]');
+  if (paint) {
+    paint.disabled=!hasPlant || plants.length!==1;
+    paint.classList.toggle('active-tool', paintMode);
+    paint.textContent=paintMode ? 'Pędzel: ON' : 'Pędzel nasadzeń';
+  }
+
+  const clear=q<HTMLButtonElement>('[data-clear-multiselect]');
+  if (clear) clear.disabled=multiSelectedIds.size<2;
+};
+
+const setSinglePlantSelection = (id:string) => {
+  multiSelectedIds.clear();
+  multiSelectedIds.add(id);
+  state.selected={type:'plant',id};
+  paintSourceId=id;
+};
+
+const togglePlantSelection = (id:string) => {
+  if (multiSelectedIds.has(id)) {
+    multiSelectedIds.delete(id);
+    if (state.selected?.type==='plant' && state.selected.id===id) {
+      const next=[...multiSelectedIds][0];
+      state.selected=next ? {type:'plant',id:next} : null;
+      paintSourceId=next || null;
+    }
+  } else {
+    multiSelectedIds.add(id);
+    state.selected={type:'plant',id};
+    paintSourceId=id;
+  }
+};
+
+const clearMultiSelection = () => {
+  multiSelectedIds.clear();
+  if (state.selected?.type==='plant') state.selected=null;
+  paintMode=false;
+  paintSourceId=null;
+  updateDesignerTools();
+};
+
 const renderSelection = () => {
   scene.querySelectorAll<HTMLElement>('[data-plant-id]').forEach(el => {
-    el.classList.toggle('selected', state.selected?.type==='plant' && el.dataset.plantId===state.selected.id);
+    const id=el.dataset.plantId || '';
+    el.classList.toggle('selected', state.selected?.type==='plant' && id===state.selected.id);
+    el.classList.toggle('multi-selected', multiSelectedIds.has(id) && !(state.selected?.type==='plant' && id===state.selected.id));
   });
   scene.querySelectorAll<HTMLElement>('[data-bed-id]').forEach(el => {
     el.classList.toggle('selected', state.selected?.type==='bed' && el.dataset.bedId===state.selected.id);
@@ -738,6 +810,158 @@ const renderSelection = () => {
   updateBedAnalytics(bed);
   renderAnalysis();
   updateLibrary();
+  updateDesignerTools();
+};
+
+const fitGroupInsideBed = (points:Array<{x:number;y:number}>, bed:BedState) => {
+  if (!points.length) return points;
+  const minX=Math.min(...points.map(p=>p.x));
+  const maxX=Math.max(...points.map(p=>p.x));
+  const minY=Math.min(...points.map(p=>p.y));
+  const maxY=Math.max(...points.map(p=>p.y));
+  let dx=0,dy=0;
+  if (minX<bed.x+2) dx=(bed.x+2)-minX;
+  if (maxX>bed.x+bed.width-2) dx=(bed.x+bed.width-2)-maxX;
+  if (minY<bed.y+2) dy=(bed.y+2)-minY;
+  if (maxY>bed.y+bed.height-2) dy=(bed.y+bed.height-2)-maxY;
+  return points.map(point=>({x:point.x+dx,y:point.y+dy}));
+};
+
+const createOddGroup = (count:3|5|7) => {
+  if (state.selected?.type!=='plant' || multiSelectedIds.size>1) return;
+  const base=state.plants.find(p=>p.id===state.selected?.id);
+  if (!base) return;
+  const bed=getBedForPlant(base) || bestBedForPlant(base);
+  if (!bed) return;
+
+  pushHistory();
+
+  const centre=getBedForPlant(base)
+    ? {x:base.x,y:base.y}
+    : candidatePosition(bed,effectiveSpread(base),base.id);
+
+  const required=Math.max(4,effectiveSpread(base)/18);
+  const radius=count===3 ? required/1.55 : count===5 ? required/1.08 : required;
+  const points:Array<{x:number;y:number}>=[];
+
+  if (count===7) {
+    points.push({x:centre.x,y:centre.y});
+    for (let i=0;i<6;i++) {
+      const angle=(-Math.PI/2)+(i*Math.PI/3);
+      points.push({x:centre.x+Math.cos(angle)*radius,y:centre.y+Math.sin(angle)*radius});
+    }
+  } else {
+    for (let i=0;i<count;i++) {
+      const angle=(-Math.PI/2)+(i*Math.PI*2/count);
+      points.push({x:centre.x+Math.cos(angle)*radius,y:centre.y+Math.sin(angle)*radius});
+    }
+  }
+
+  const fitted=fitGroupInsideBed(points,bed).map(point=>({x:snap(point.x),y:snap(point.y)}));
+  base.x=fitted[0].x;
+  base.y=fitted[0].y;
+
+  multiSelectedIds.clear();
+  multiSelectedIds.add(base.id);
+
+  for (let i=1;i<fitted.length;i++) {
+    const clonePlant:PlantState={
+      ...clone(base),
+      id:`p-group-${Date.now()}-${i}`,
+      x:fitted[i].x,
+      y:fitted[i].y,
+    };
+    state.plants.push(clonePlant);
+    multiSelectedIds.add(clonePlant.id);
+  }
+
+  state.selected={type:'plant',id:base.id};
+  paintSourceId=base.id;
+  syncScene();
+  scheduleSave();
+};
+
+const duplicateSelection = () => {
+  const plants=getSelectedPlants();
+  if (!plants.length) return;
+
+  const bedIds=new Set(plants.map(plant=>getBedForPlant(plant)?.id).filter(Boolean));
+  if (bedIds.size!==1) {
+    const badge=q('[data-save-badge]');
+    if (badge) badge.textContent='wybierz grupę w jednej rabacie';
+    return;
+  }
+
+  const bed=state.beds.find(item=>item.id===[...bedIds][0]);
+  if (!bed) return;
+
+  pushHistory();
+
+  const candidates=[[6,0],[-6,0],[0,6],[0,-6],[6,6],[-6,6],[6,-6],[-6,-6]];
+  let offset={x:4,y:4};
+  for (const [dx,dy] of candidates) {
+    const fits=plants.every(plant=>{
+      const x=plant.x+dx, y=plant.y+dy;
+      return x>=bed.x+2 && x<=bed.x+bed.width-2 && y>=bed.y+2 && y<=bed.y+bed.height-2;
+    });
+    if (fits) {
+      offset={x:dx,y:dy};
+      break;
+    }
+  }
+
+  multiSelectedIds.clear();
+  const duplicates=plants.map((plant,index)=>{
+    const next:PlantState={
+      ...clone(plant),
+      id:`p-dup-${Date.now()}-${index}`,
+      x:snap(plant.x+offset.x),
+      y:snap(plant.y+offset.y),
+    };
+    state.plants.push(next);
+    multiSelectedIds.add(next.id);
+    return next;
+  });
+
+  if (duplicates[0]) {
+    state.selected={type:'plant',id:duplicates[0].id};
+    paintSourceId=duplicates[0].id;
+  }
+  syncScene();
+  scheduleSave();
+};
+
+const canPlantAt = (source:PlantState, bed:BedState, x:number, y:number) => {
+  if (x<bed.x+1 || x>bed.x+bed.width-1 || y<bed.y+1 || y>bed.y+bed.height-1) return false;
+  return plantsInBed(bed).every(other=>{
+    const required=Math.max(3.5,((effectiveSpread(source)+effectiveSpread(other))/2)/18);
+    return Math.hypot(x-other.x,y-other.y)>=required*.92;
+  });
+};
+
+const paintPlantAt = (clientX:number,clientY:number) => {
+  const source=paintSourceId ? state.plants.find(p=>p.id===paintSourceId) : undefined;
+  if (!source) return false;
+  const rect=scene.getBoundingClientRect();
+  const x=snap(clamp(((clientX-rect.left)/rect.width)*100,2,98));
+  const y=snap(clamp(((clientY-rect.top)/rect.height)*100,3,97));
+  const bed=state.beds.find(item=>x>=item.x&&x<=item.x+item.width&&y>=item.y&&y<=item.y+item.height);
+  if (!bed || !canPlantAt(source,bed,x,y)) return false;
+  if (lastPaintPoint && Math.hypot(x-lastPaintPoint.x,y-lastPaintPoint.y)<Math.max(2.5,effectiveSpread(source)/22)) return false;
+
+  paintSequence+=1;
+  const next:PlantState={
+    ...clone(source),
+    id:`p-paint-${Date.now()}-${paintSequence}`,
+    x,y,
+  };
+  state.plants.push(next);
+  lastPaintPoint={x,y};
+  multiSelectedIds.add(next.id);
+  createPlantElement(next);
+  renderSelection();
+  scheduleSave();
+  return true;
 };
 
 const syncScene = () => {
@@ -749,6 +973,21 @@ const syncScene = () => {
 
 scene.addEventListener('pointerdown', event => {
   const target = event.target as HTMLElement;
+
+  if (paintMode && !target.closest('[data-plant-id]') && !target.closest('[data-resize-bed]')) {
+    const source=paintSourceId ? state.plants.find(p=>p.id===paintSourceId) : undefined;
+    if (source) {
+      pushHistory();
+      multiSelectedIds.clear();
+      multiSelectedIds.add(source.id);
+      lastPaintPoint=null;
+      paintStroke=true;
+      scene.setPointerCapture(event.pointerId);
+      paintPlantAt(event.clientX,event.clientY);
+      return;
+    }
+  }
+
   const resize = target.closest<HTMLElement>('[data-resize-bed]');
   if (resize?.dataset.resizeBed) {
     const b = state.beds.find(x=>x.id===resize.dataset.resizeBed);
@@ -763,10 +1002,20 @@ scene.addEventListener('pointerdown', event => {
 
   const plantEl = target.closest<HTMLElement>('[data-plant-id]');
   if (plantEl?.dataset.plantId) {
+    const id=plantEl.dataset.plantId;
+    const additive=event.shiftKey || event.ctrlKey || event.metaKey;
+    if (additive) {
+      togglePlantSelection(id);
+      paintMode=false;
+      renderSelection();
+      scheduleSave();
+      return;
+    }
+
+    setSinglePlantSelection(id);
     const rect=plantEl.getBoundingClientRect();
     pushHistory();
-    interaction={type:'plant',id:plantEl.dataset.plantId,offsetX:event.clientX-rect.left-rect.width/2,offsetY:event.clientY-rect.top-rect.height/2};
-    state.selected={type:'plant',id:plantEl.dataset.plantId};
+    interaction={type:'plant',id,offsetX:event.clientX-rect.left-rect.width/2,offsetY:event.clientY-rect.top-rect.height/2};
     plantEl.setPointerCapture(event.pointerId);
     plantEl.classList.add('dragging');
     renderSelection();
@@ -788,6 +1037,9 @@ scene.addEventListener('pointerdown', event => {
       startBedY:b.y,
       members:plantsInBed(b).map(p=>({id:p.id,x:p.x,y:p.y})),
     };
+    multiSelectedIds.clear();
+    paintMode=false;
+    paintSourceId=null;
     state.selected={type:'bed',id:bedEl.dataset.bedId};
     bedEl.setPointerCapture(event.pointerId);
     bedEl.classList.add('dragging');
@@ -795,11 +1047,18 @@ scene.addEventListener('pointerdown', event => {
     return;
   }
 
+  multiSelectedIds.clear();
+  paintMode=false;
+  paintSourceId=null;
   state.selected=null;
   renderSelection();
 });
 
 scene.addEventListener('pointermove', event => {
+  if (paintStroke) {
+    paintPlantAt(event.clientX,event.clientY);
+    return;
+  }
   if (!interaction) return;
   const rect=scene.getBoundingClientRect();
 
@@ -847,6 +1106,8 @@ scene.addEventListener('pointermove', event => {
 const stopInteraction=()=>{
   document.querySelectorAll('.dragging').forEach(el=>el.classList.remove('dragging'));
   interaction=null;
+  paintStroke=false;
+  lastPaintPoint=null;
 };
 scene.addEventListener('pointerup',stopInteraction);
 scene.addEventListener('pointercancel',stopInteraction);
@@ -957,6 +1218,36 @@ q<HTMLSelectElement>('[data-bed-moisture]')?.addEventListener('change',e=>update
 q<HTMLSelectElement>('[data-bed-ph]')?.addEventListener('change',e=>updateBedCondition('ph',(e.currentTarget as HTMLSelectElement).value));
 q<HTMLSelectElement>('[data-bed-front]')?.addEventListener('change',e=>updateBedCondition('frontEdge',(e.currentTarget as HTMLSelectElement).value));
 
+qa<HTMLButtonElement>('[data-group-size]').forEach(button=>{
+  button.addEventListener('click',()=>{
+    const count=Number(button.dataset.groupSize);
+    if (count===3 || count===5 || count===7) createOddGroup(count);
+  });
+});
+
+q('[data-duplicate-selection]')?.addEventListener('click',duplicateSelection);
+
+q('[data-clear-multiselect]')?.addEventListener('click',()=>{
+  const primary=state.selected?.type==='plant' ? state.selected.id : null;
+  multiSelectedIds.clear();
+  if (primary) multiSelectedIds.add(primary);
+  paintMode=false;
+  renderSelection();
+});
+
+q('[data-paint-mode]')?.addEventListener('click',()=>{
+  const plants=getSelectedPlants();
+  if (plants.length!==1) return;
+  paintMode=!paintMode;
+  paintSourceId=plants[0].id;
+  if (paintMode) {
+    multiSelectedIds.clear();
+    multiSelectedIds.add(plants[0].id);
+    state.selected={type:'plant',id:plants[0].id};
+  }
+  updateDesignerTools();
+});
+
 q('[data-auto-layout]')?.addEventListener('click',()=>{
   if (!state.beds.length) return;
   pushHistory();
@@ -1025,6 +1316,10 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   state.plants=clone(initialPlants);
   state.beds=clone(initialBeds);
   state.selected={type:'plant',id:'p1'};
+  multiSelectedIds.clear();
+  multiSelectedIds.add('p1');
+  paintSourceId='p1';
+  paintMode=false;
   state.snap=true;
   state.growthYear=3;
   state.currentMonth=0;
@@ -1076,6 +1371,9 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
       q('[data-growth-label]')!.textContent=`rok ${state.growthYear}/5`;
       qa<HTMLButtonElement>('[data-month]').forEach(btn=>btn.classList.toggle('active',Number(btn.dataset.month)===state.currentMonth));
     }
+    multiSelectedIds.clear();
+    paintSourceId=null;
+    paintMode=false;
     state.selected=state.beds[0] ? {type:'bed',id:state.beds[0].id} : null;
     syncScene();
     scheduleSave();
@@ -1103,8 +1401,15 @@ document.addEventListener('keydown',event=>{
   if ((event.key==='Delete'||event.key==='Backspace') && state.selected && !isFormField) {
     event.preventDefault();
     pushHistory();
-    if (state.selected.type==='plant') state.plants=state.plants.filter(x=>x.id!==state.selected?.id);
-    else state.beds=state.beds.filter(x=>x.id!==state.selected?.id);
+    if (state.selected.type==='plant') {
+      const ids=multiSelectedIds.size ? new Set(multiSelectedIds) : new Set([state.selected.id]);
+      state.plants=state.plants.filter(x=>!ids.has(x.id));
+      multiSelectedIds.clear();
+      paintSourceId=null;
+      paintMode=false;
+    } else {
+      state.beds=state.beds.filter(x=>x.id!==state.selected?.id);
+    }
     state.selected=null;
     syncScene();
     scheduleSave();
@@ -1117,6 +1422,10 @@ const growthInput=q<HTMLInputElement>('[data-growth-year]');
 if (growthInput) growthInput.value=String(state.growthYear);
 q('[data-growth-label]')!.textContent=`rok ${state.growthYear}/5`;
 qa<HTMLButtonElement>('[data-month]').forEach(btn=>btn.classList.toggle('active',Number(btn.dataset.month)===state.currentMonth));
+if (state.selected?.type==='plant') {
+  multiSelectedIds.add(state.selected.id);
+  paintSourceId=state.selected.id;
+}
 updateHistoryButtons();
 syncScene();
 setZoom(state.zoom);
