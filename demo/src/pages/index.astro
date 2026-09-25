@@ -1,53 +1,155 @@
 ---
-import Layout from 'src/layouts/Default/Default.astro';
-import PageNavigation from 'src/components/PageNavigation/PageNavigation.astro';
+import '../styles/moj-ogrod-planner.scss';
 
-import loadPackages from 'src/packages-loader';
-
-const rootPackage = (
-  await loadPackages({
-    pJsons: await Astro.glob('../../../package.json'),
-
-    readmes: await Astro.glob('/content/packages/README.md'),
-
-    changelogs: await Astro.glob(
-      '/content/packages/{app,components}/{*/,*/*/}CHANGELOG.md',
-    ),
-    anchorMode: false,
-  })
-).pop();
-
-const titles = {
-  main: "Julian's Web Garden",
-  sub: rootPackage.pJson.description,
-};
-
-const actions = [
-  {
-    title: 'Repository',
-    href: 'https://github.com/JulianCataldo/web-garden',
-    icon: 'mdi:github',
-  },
-  {
-    title: 'Documentation',
-    href: '#julians-web-garden',
-    icon: 'system-uicons:book-text',
-  },
+const nav = [
+  ['Plan ogrodu', 'aktywny'],
+  ['Rabaty i sektory', '6'],
+  ['Rośliny', '210'],
+  ['Mój ogród', '56'],
+  ['Zakupy', '12'],
+  ['Studio', ''],
+  ['Analiza', ''],
 ];
 ---
 
-<Layout titles={titles} actions={actions}>
-  <article class="main-content">
-    <PageNavigation
-      title="Web garden"
-      links={rootPackage.readme.headers}
-      anchorMode={true}
-    />
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Mój Ogród — Planner Pro</title>
+    <meta name="description" content="Desktopowy planer ogrodu: rabaty, rośliny, rozstaw, sezonowość, zakupy i analiza kompozycji." />
+  </head>
+  <body>
+    <div class="planner-shell">
+      <header class="planner-topbar">
+        <div class="brand-block">
+          <div class="brand-mark">MO</div>
+          <div class="brand-copy">
+            <strong>Mój Ogród</strong>
+            <span>Planner Pro</span>
+          </div>
+        </div>
 
-    <div class="content article">
-      <div class="wrapper article-body">
-        <rootPackage.readme.Content />
+        <div class="project-title">
+          <span class="status-dot"></span>
+          <strong>Ogród domowy · Rzeszów</strong>
+          <span class="badge">zapisano</span>
+        </div>
+
+        <div class="top-actions">
+          <button class="icon-btn" title="Cofnij">↶</button>
+          <button class="icon-btn" title="Ponów">↷</button>
+          <button class="ghost-btn">Import z mobile</button>
+          <button class="primary-btn">Eksport projektu</button>
+        </div>
+      </header>
+
+      <div class="planner-body">
+        <aside class="sidebar">
+          <div class="section-kicker">Projekt</div>
+          {nav.slice(0, 4).map(([label, count], i) => (
+            <button class:list={['nav-item', { active: i === 0 }]}>
+              <span>{label}</span>
+              {count && <small>{count}</small>}
+            </button>
+          ))}
+
+          <div class="section-kicker">Planowanie</div>
+          {nav.slice(4).map(([label, count]) => (
+            <button class="nav-item">
+              <span>{label}</span>
+              {count && <small>{count}</small>}
+            </button>
+          ))}
+
+          <div class="section-kicker">Warstwy</div>
+          <button class="nav-item"><span>Rośliny posadzone</span><small>✓</small></button>
+          <button class="nav-item"><span>Rośliny planowane</span><small>✓</small></button>
+          <button class="nav-item"><span>Rozstaw i kolizje</span><small>✓</small></button>
+          <button class="nav-item"><span>Sezon / wzrost</span><small>2027</small></button>
+        </aside>
+
+        <main class="workspace">
+          <div class="workspace-toolbar">
+            <div class="tool-group">
+              <button class="ghost-btn">Wybierz</button>
+              <button class="ghost-btn">Dodaj rabatę</button>
+              <button class="ghost-btn">Dodaj roślinę</button>
+              <button class="ghost-btn">Zmierz</button>
+              <button class="ghost-btn">Auto-layout</button>
+            </div>
+            <div class="tool-group">
+              <button class="ghost-btn">−</button>
+              <button class="ghost-btn">100%</button>
+              <button class="ghost-btn">+</button>
+              <button class="ghost-btn">Dopasuj</button>
+            </div>
+          </div>
+
+          <section class="canvas" aria-label="Plan ogrodu">
+            <div class="garden-boundary"></div>
+            <div class="bed bed-a"></div>
+            <div class="bed bed-b"></div>
+            <div class="bed bed-c"></div>
+
+            <button class="plant-dot p1" title="Hortensja bukietowa">H</button>
+            <button class="plant-dot p2" title="Sosna bośniacka">S</button>
+            <button class="plant-dot p3" title="Paproć">P</button>
+            <button class="plant-dot p4" title="Hakonechloa">Ha</button>
+            <button class="plant-dot p5" title="Żurawka">Ż</button>
+            <button class="plant-dot p6" title="Funkia">F</button>
+
+            <div class="canvas-legend">
+              <span>● posadzone</span>
+              <span>○ planowane</span>
+              <span>↔ rozstaw</span>
+            </div>
+          </section>
+
+          <section class="bottom-strip">
+            <div class="metric"><strong>6</strong><span>rabat i sektorów</span></div>
+            <div class="metric"><strong>56</strong><span>roślin w Twoim ogrodzie</span></div>
+            <div class="metric"><strong>12</strong><span>pozycji do zakupu</span></div>
+            <div class="metric"><strong>3</strong><span>kolizje do sprawdzenia</span></div>
+          </section>
+        </main>
+
+        <aside class="sidebar right">
+          <div class="section-kicker">Inspektor</div>
+
+          <div class="panel-card">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px">
+              <h3 style="margin:0">Rabata frontowa</h3>
+              <span class="badge">wybrana</span>
+            </div>
+            <div class="property-row"><span>Powierzchnia</span><strong>8,4 m²</strong></div>
+            <div class="property-row"><span>Ekspozycja</span><strong>wschód</strong></div>
+            <div class="property-row"><span>Gleba</span><strong>próchniczna</strong></div>
+            <div class="property-row"><span>Rośliny</span><strong>14</strong></div>
+          </div>
+
+          <div class="panel-card">
+            <h3>Analiza kompozycji</h3>
+            <p>Pokrycie rabaty jest dobre, ale 3 rośliny naruszają docelowy rozstaw. Największe zagęszczenie występuje w centralnej części rabaty.</p>
+            <div class="progress"><i></i></div>
+            <div class="property-row"><span>Ocena układu</span><strong>74%</strong></div>
+          </div>
+
+          <div class="panel-card">
+            <h3>Sezonowość</h3>
+            <div class="property-row"><span>Wiosna</span><strong>68%</strong></div>
+            <div class="property-row"><span>Lato</span><strong>92%</strong></div>
+            <div class="property-row"><span>Jesień</span><strong>81%</strong></div>
+            <div class="property-row"><span>Zima</span><strong>45%</strong></div>
+          </div>
+
+          <div class="panel-card">
+            <h3>Do poprawy</h3>
+            <p><span class="badge warn">3 kolizje</span></p>
+            <p style="margin-top:10px">Planner będzie tu wskazywał konflikty rozstawu, brakujące piętra kompozycji i luki sezonowe.</p>
+          </div>
+        </aside>
       </div>
     </div>
-  </article>
-</Layout>
+  </body>
+</html>
