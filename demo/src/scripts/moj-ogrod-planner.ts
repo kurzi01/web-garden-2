@@ -863,14 +863,12 @@ const renderMigrationViews=()=>{
   if (active==='analysis') renderProjectAnalysisView();
 };
 
-const openWorkspaceView=(view:string)=>{
+const openWorkspaceView=(view:string, source?:HTMLElement)=>{
   qa<HTMLElement>('[data-workspace-view]').forEach(panel=>panel.hidden=panel.dataset.workspaceView!==view);
-  qa<HTMLElement>('[data-open-view]').forEach(button=>button.classList.toggle('active',button.dataset.openView===view));
-  if (view==='planner') {
-    qa<HTMLElement>('[data-workspace-view]').forEach(panel=>panel.hidden=true);
-    const plannerButton=q<HTMLElement>('[data-open-view="planner"]');
-    plannerButton?.classList.add('active');
-  }
+  qa<HTMLElement>('[data-open-view]').forEach(button=>button.classList.remove('active'));
+  if (view==='planner') qa<HTMLElement>('[data-workspace-view]').forEach(panel=>panel.hidden=true);
+  const activeButton=source || q<HTMLElement>(`[data-open-view="${view}"]`) || q<HTMLElement>('[data-open-view="planner"]');
+  activeButton?.classList.add('active');
   renderMigrationViews();
 };
 
@@ -1478,7 +1476,7 @@ q('[data-redo]')?.addEventListener('click',redo);
 
 
 qa<HTMLElement>('[data-open-view]').forEach(button=>{
-  button.addEventListener('click',()=>openWorkspaceView(button.dataset.openView||'planner'));
+  button.addEventListener('click',()=>openWorkspaceView(button.dataset.openView||'planner',button));
 });
 qa<HTMLElement>('[data-close-view]').forEach(button=>{
   button.addEventListener('click',()=>openWorkspaceView('planner'));
