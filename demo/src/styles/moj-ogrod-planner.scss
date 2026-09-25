@@ -1026,3 +1026,132 @@ button,input,select { font:inherit; }
 .planner-scene.boundary-edit-mode .garden-element {
   opacity:.72;
 }
+
+
+.plant-history-panel { overflow:hidden; }
+
+.history-form {
+  display:grid;
+  grid-template-columns:1fr 1.2fr;
+  gap:7px;
+  margin-bottom:10px;
+}
+.history-form input,
+.history-form select,
+.history-form textarea {
+  width:100%;
+  border:1px solid var(--mg-line);
+  border-radius:8px;
+  background:#fff;
+  padding:7px 8px;
+  color:var(--mg-text);
+  font-size:11px;
+}
+.history-form textarea,
+.history-form .primary-btn {
+  grid-column:1 / -1;
+}
+.history-form .primary-btn {
+  height:33px;
+  font-size:11px;
+}
+
+.history-list {
+  display:grid;
+  gap:6px;
+  max-height:210px;
+  overflow:auto;
+}
+.history-item {
+  position:relative;
+  padding:9px 34px 9px 10px;
+  border:1px solid #e6eae3;
+  border-radius:9px;
+  background:#f8faf6;
+}
+.history-item > div {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.history-item strong { font-size:11px; }
+.history-item span {
+  color:var(--mg-muted);
+  font-size:9px;
+}
+.history-item p {
+  margin-top:5px;
+  font-size:10px;
+}
+.history-delete {
+  position:absolute;
+  right:6px;
+  top:7px;
+  width:24px;
+  height:24px;
+  border-radius:7px;
+}
+.history-empty {
+  padding:12px;
+  border-radius:9px;
+  background:#f5f7f3;
+  color:var(--mg-muted);
+  text-align:center;
+  font-size:10px;
+}
+
+.photo-tools {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:10px;
+}
+.photo-tools .ghost-btn {
+  height:32px;
+  font-size:10px;
+}
+.photo-tools small {
+  color:var(--mg-muted);
+  font-size:9px;
+  line-height:1.25;
+}
+
+.plant-photo-grid {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:6px;
+  margin-top:8px;
+}
+.plant-photo {
+  position:relative;
+  margin:0;
+  overflow:hidden;
+  border:1px solid var(--mg-line);
+  border-radius:9px;
+  background:#f3f5f1;
+}
+.plant-photo img {
+  display:block;
+  width:100%;
+  aspect-ratio:1 / 1;
+  object-fit:cover;
+}
+.plant-photo figcaption {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:5px;
+  padding:4px 5px;
+  color:var(--mg-muted);
+  font-size:8px;
+}
+.plant-photo figcaption button {
+  width:20px;
+  height:20px;
+  padding:0;
+  border:0;
+  border-radius:5px;
+  background:#fff;
+  cursor:pointer;
+}
