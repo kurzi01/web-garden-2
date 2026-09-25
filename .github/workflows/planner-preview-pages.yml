@@ -22,40 +22,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 7.33.7
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 16
-          cache: pnpm
-
-      - name: Install build utilities
-        run: sudo apt-get update && sudo apt-get install -y rsync tree
-
-      - name: Install dependencies
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
-          CYPRESS_INSTALL_BINARY: '0'
-          HUSKY: '0'
-        run: pnpm install --recursive --frozen-lockfile=false
-
-      - name: Build Planner preview
-        working-directory: ./demo
-        env:
-          GITHUB_PAGES: 'true'
-        run: pnpm run build
-
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
-      - name: Upload Pages artifact
+      - name: Upload standalone preview
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./demo/dist
+          path: ./preview
 
   deploy:
     environment:
