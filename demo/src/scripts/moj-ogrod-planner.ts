@@ -130,8 +130,8 @@ const normalisePlant = (input: Partial<PlantState> & { name?: string }, index = 
     name: input.name || fallback.name,
     latin: input.latin || fallback.latin,
     short: input.short || fallback.short,
-    x: Number.isFinite(input.x) ? Number(input.x) : 50,
-    y: Number.isFinite(input.y) ? Number(input.y) : 50,
+    x: Number.isFinite(Number(input.x)) ? Number(input.x) : 50,
+    y: Number.isFinite(Number(input.y)) ? Number(input.y) : 50,
     spacing: Number.isFinite(Number(input.spacing)) ? Number(input.spacing) : fallback.spacing,
     height: Number.isFinite(Number(input.height)) ? Number(input.height) : fallback.height,
     spread: Number.isFinite(Number(input.spread)) ? Number(input.spread) : fallback.spread,
@@ -148,10 +148,10 @@ const normalisePlant = (input: Partial<PlantState> & { name?: string }, index = 
 const normaliseBed = (input: Partial<BedState>, index = 0): BedState => ({
   id: input.id || `b-import-${Date.now()}-${index}`,
   name: input.name || `Rabata ${index+1}`,
-  x: Number.isFinite(input.x) ? Number(input.x) : 30,
-  y: Number.isFinite(input.y) ? Number(input.y) : 30,
-  width: Number.isFinite(input.width) ? Number(input.width) : 24,
-  height: Number.isFinite(input.height) ? Number(input.height) : 18,
+  x: Number.isFinite(Number(input.x)) ? Number(input.x) : 30,
+  y: Number.isFinite(Number(input.y)) ? Number(input.y) : 30,
+  width: Number.isFinite(Number(input.width)) ? Number(input.width) : 24,
+  height: Number.isFinite(Number(input.height)) ? Number(input.height) : 18,
   sun: input.sun || 'partial',
   moisture: input.moisture || 'normal',
   ph: input.ph || 'neutral',
@@ -199,7 +199,7 @@ const growthFactor = () => growthFactors[clamp(state.growthYear,1,5)];
 const effectiveSpread = (plant:PlantState) => plant.spread * growthFactor();
 const effectiveHeight = (plant:PlantState) => plant.height * growthFactor();
 
-const plantBackness = (plant:PlantState, bed:BedState) => {
+const plantBackness = (plant:Pick<PlantState,'x'|'y'>, bed:BedState) => {
   const relX=clamp((plant.x-bed.x)/Math.max(1,bed.width),0,1);
   const relY=clamp((plant.y-bed.y)/Math.max(1,bed.height),0,1);
   if (bed.frontEdge==='bottom') return 1-relY;
@@ -415,7 +415,7 @@ const templateFromLibraryItem = (item:HTMLElement): Omit<PlantState,'id'|'x'|'y'
   soil:item.dataset.librarySoil || 'do uzupełnienia',
 });
 
-const candidatePosition = (bed:BedState, spacing:number, excludeId?:string) => {
+const candidatePosition = (bed:BedState, targetSpread:number, excludeId?:string) => {
   const candidates = [
     [.5,.5],[.32,.34],[.68,.34],[.32,.68],[.68,.68],
     [.5,.28],[.5,.72],[.24,.5],[.76,.5],
@@ -426,7 +426,7 @@ const candidatePosition = (bed:BedState, spacing:number, excludeId?:string) => {
     const x = snap(bed.x + bed.width * rx);
     const y = snap(bed.y + bed.height * ry);
     const clear = inThisBed.every(p => {
-      const required = Math.max(4, ((spacing+p.spacing)/2)/18);
+      const required = Math.max(3.5, ((targetSpread+effectiveSpread(p))/2)/18);
       return Math.hypot(x-p.x,y-p.y) >= required;
     });
     if (clear) return {x,y};
@@ -449,7 +449,7 @@ const bestBedForPlant = (plant:PlantState) => [...state.beds]
 const addPlantFromTemplate = (template:Omit<PlantState,'id'|'x'|'y'>) => {
   pushHistory();
   const bed = getContextBed();
-  const position = bed ? candidatePosition(bed,template.spacing) : {x:50,y:50};
+  const position = bed ? candidatePosition(bed,template.spread*growthFactor()) : {x:50,y:50};
   const plant:PlantState = {
     id:`p${Date.now()}`,
     ...clone(template),
@@ -526,8 +526,11 @@ const renderAnalysis = () => {
 
   const collisionCount = collisions.size;
   const mismatchCount = mismatchIds.size;
+  const avgLayering = state.beds.length
+    ? Math.round(state.beds.reduce((sum,bed)=>sum+layeringScore(bed),0)/state.beds.length)
+    : 100;
   const score = clamp(
-    100 - collisionCount*6 - outside*8 - mismatchCount*7 - Math.max(0, 30-avgCoverage)/2,
+    100 - collisionCount*6 - outside*8 - mismatchCount*7 - Math.max(0, 30-avgCoverage)/2 - Math.max(0,65-avgLayering)/4,
     25,
     100,
   );
@@ -554,7 +557,7 @@ const renderAnalysis = () => {
         : 'Układ nie zawiera wykrytych konfliktów.';
 
   q('[data-analysis-copy]')!.textContent =
-    `Pokrycie: ${avgCoverage}%. Stanowisko: ${mismatchCount} niedopasowanych. Poza rabatami: ${outside}. W kolizji: ${collisionCount}.`;
+    `Pokrycie: ${avgCoverage}%. Warstwowanie: ${avgLayering}%. Stanowisko: ${mismatchCount} niedopasowanych. Poza rabatami: ${outside}. W kolizji: ${collisionCount}.`;
 };
 
 const updateComposition = (bed?:BedState) => {
@@ -916,7 +919,7 @@ q('[data-move-best-bed]')?.addEventListener('click',()=>{
   const bed=bestBedForPlant(plant);
   if (!bed) return;
   pushHistory();
-  const pos=candidatePosition(bed,plant.spacing,plant.id);
+  const pos=candidatePosition(bed,effectiveSpread(plant),plant.id);
   plant.x=pos.x;
   plant.y=pos.y;
   syncScene();
@@ -930,7 +933,7 @@ q('[data-fix-spacing]')?.addEventListener('click',()=>{
   const bed=getBedForPlant(plant) || bestBedForPlant(plant);
   if (!bed) return;
   pushHistory();
-  const pos=candidatePosition(bed,plant.spacing,plant.id);
+  const pos=candidatePosition(bed,effectiveSpread(plant),plant.id);
   plant.x=pos.x;
   plant.y=pos.y;
   syncScene();
@@ -983,7 +986,7 @@ q('[data-auto-layout]')?.addEventListener('click',()=>{
       const row=Math.floor(i/cols);
       const x=snap(bed.x + bed.width*((col+1)/(cols+1)));
       const y=snap(bed.y + bed.height*((row+1)/(rows+1)));
-      return {x,y,backness:plantBackness({x,y} as PlantState,bed)};
+      return {x,y,backness:plantBackness({x,y},bed)};
     }).sort((a,b)=>b.backness-a.backness);
     const ordered=[...plants].sort((a,b)=>effectiveHeight(b)-effectiveHeight(a));
     ordered.forEach((plant,i)=>{
@@ -1065,6 +1068,14 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     pushHistory();
     state.plants=parsed.plants.map((p:Partial<PlantState>,i:number)=>normalisePlant(p,i));
     state.beds=parsed.beds.map((b:Partial<BedState>,i:number)=>normaliseBed(b,i));
+    if (parsed.simulation) {
+      state.growthYear=clamp(Number(parsed.simulation.growthYear)||3,1,5);
+      state.currentMonth=clamp(Number(parsed.simulation.currentMonth)||0,0,12);
+      const growth=q<HTMLInputElement>('[data-growth-year]');
+      if (growth) growth.value=String(state.growthYear);
+      q('[data-growth-label]')!.textContent=`rok ${state.growthYear}/5`;
+      qa<HTMLButtonElement>('[data-month]').forEach(btn=>btn.classList.toggle('active',Number(btn.dataset.month)===state.currentMonth));
+    }
     state.selected=state.beds[0] ? {type:'bed',id:state.beds[0].id} : null;
     syncScene();
     scheduleSave();
