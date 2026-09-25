@@ -348,12 +348,12 @@ const templateFromLibraryItem = (item:HTMLElement): Omit<PlantState,'id'|'x'|'y'
   soil:item.dataset.librarySoil || 'do uzupełnienia',
 });
 
-const candidatePosition = (bed:BedState, spacing:number) => {
+const candidatePosition = (bed:BedState, spacing:number, excludeId?:string) => {
   const candidates = [
     [.5,.5],[.32,.34],[.68,.34],[.32,.68],[.68,.68],
     [.5,.28],[.5,.72],[.24,.5],[.76,.5],
   ];
-  const inThisBed = plantsInBed(bed);
+  const inThisBed = plantsInBed(bed).filter(p=>p.id!==excludeId);
 
   for (const [rx,ry] of candidates) {
     const x = snap(bed.x + bed.width * rx);
@@ -371,6 +371,13 @@ const candidatePosition = (bed:BedState, spacing:number) => {
     y:snap(clamp(bed.y + bed.height/2 + offset/2, bed.y+2, bed.y+bed.height-2)),
   };
 };
+
+const bestBedForPlant = (plant:PlantState) => [...state.beds]
+  .sort((a,b)=>{
+    const fitDiff=fitPlantToBed(plant,b).score-fitPlantToBed(plant,a).score;
+    if (fitDiff) return fitDiff;
+    return coverageForBed(a)-coverageForBed(b);
+  })[0];
 
 const addPlantFromTemplate = (template:Omit<PlantState,'id'|'x'|'y'>) => {
   pushHistory();
@@ -538,6 +545,10 @@ const updatePlantRequirements = (plant?:PlantState, bed?:BedState) => {
   q('[data-plant-soil]')!.textContent = plant.soil;
 
   const fit = q<HTMLElement>('[data-plant-fit]');
+  const moveBest=q<HTMLButtonElement>('[data-move-best-bed]');
+  const fixSpacing=q<HTMLButtonElement>('[data-fix-spacing]');
+  if (moveBest) moveBest.disabled=!plant || state.beds.length===0;
+  if (fixSpacing) fixSpacing.disabled=!plant || !bed;
   if (!fit) return;
   if (!bed) {
     fit.className='compatibility-status warn';
@@ -770,6 +781,34 @@ qa<HTMLElement>('[data-library-item]').forEach(item=>{
 
 q<HTMLInputElement>('[data-library-search]')?.addEventListener('input',updateLibrary);
 q<HTMLInputElement>('[data-compatible-filter]')?.addEventListener('change',updateLibrary);
+
+q('[data-move-best-bed]')?.addEventListener('click',()=>{
+  if (state.selected?.type!=='plant') return;
+  const plant=state.plants.find(p=>p.id===state.selected?.id);
+  if (!plant) return;
+  const bed=bestBedForPlant(plant);
+  if (!bed) return;
+  pushHistory();
+  const pos=candidatePosition(bed,plant.spacing,plant.id);
+  plant.x=pos.x;
+  plant.y=pos.y;
+  syncScene();
+  scheduleSave();
+});
+
+q('[data-fix-spacing]')?.addEventListener('click',()=>{
+  if (state.selected?.type!=='plant') return;
+  const plant=state.plants.find(p=>p.id===state.selected?.id);
+  if (!plant) return;
+  const bed=getBedForPlant(plant) || bestBedForPlant(plant);
+  if (!bed) return;
+  pushHistory();
+  const pos=candidatePosition(bed,plant.spacing,plant.id);
+  plant.x=pos.x;
+  plant.y=pos.y;
+  syncScene();
+  scheduleSave();
+});
 
 const updateBedCondition = (key:'sun'|'moisture'|'ph', value:string) => {
   const bed = getContextBed();
