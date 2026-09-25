@@ -1,0 +1,28 @@
+name: Planner TypeScript Check
+
+on:
+  push:
+    branches:
+      - work/migration
+    paths:
+      - 'demo/src/scripts/moj-ogrod-planner.ts'
+      - '.github/workflows/planner-ts-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Typecheck standalone planner
+        run: npx --yes --package=typescript@5.6.3 tsc --noEmit --target ES2022 --lib ES2022,DOM --skipLibCheck demo/src/scripts/moj-ogrod-planner.ts
