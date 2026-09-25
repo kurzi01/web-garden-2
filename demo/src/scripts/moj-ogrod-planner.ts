@@ -4,6 +4,7 @@ type Moisture = 'dry' | 'normal' | 'moist';
 type SoilPh = 'acid' | 'neutral' | 'alkaline';
 type FrontEdge = 'top' | 'bottom' | 'left' | 'right';
 type PlantStatus = 'planted' | 'planned';
+type GardenElementType = 'path' | 'terrace' | 'water' | 'structure';
 
 type PlantState = {
   id: string;
@@ -38,7 +39,17 @@ type BedState = {
   frontEdge: FrontEdge;
 };
 
-type Selection = { type: 'plant' | 'bed'; id: string } | null;
+type GardenElementState = {
+  id: string;
+  type: GardenElementType;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type Selection = { type: 'plant' | 'bed' | 'element'; id: string } | null;
 
 type PlannerState = {
   zoom: number;
@@ -50,6 +61,7 @@ type PlannerState = {
   showPlanned: boolean;
   plants: PlantState[];
   beds: BedState[];
+  elements: GardenElementState[];
   selected: Selection;
 };
 
@@ -58,8 +70,8 @@ type FitResult = {
   issues: string[];
 };
 
-const STORAGE_KEY = 'moj-ogrod-planner-v6';
-const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
+const STORAGE_KEY = 'moj-ogrod-planner-v7';
+const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v6','moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
 const BUDGET_STORAGE_KEY = 'moj-ogrod-budget-prices-v1';
 const SNAP_STEP = 2;
 const HISTORY_LIMIT = 40;
@@ -74,6 +86,13 @@ const moistureLabels: Record<Moisture,string> = {
   dry:'sucha',
   normal:'umiarkowana',
   moist:'wilgotna',
+};
+
+const elementLabels:Record<GardenElementType,string>={
+  path:'Ścieżka',
+  terrace:'Taras',
+  water:'Woda',
+  structure:'Konstrukcja',
 };
 
 const phLabels: Record<SoilPh,string> = {
@@ -129,6 +148,7 @@ const defaultState: PlannerState = {
   showPlanned:true,
   plants:clone(initialPlants),
   beds:clone(initialBeds),
+  elements:[],
   selected:{ type:'plant', id:'p1' },
 };
 
@@ -170,6 +190,18 @@ const normaliseBed = (input: Partial<BedState>, index = 0): BedState => ({
   frontEdge: input.frontEdge || 'bottom',
 });
 
+const normaliseElement=(input:Partial<GardenElementState>,index=0):GardenElementState=>({
+  id:input.id || `element-${Date.now()}-${index}`,
+  type:['path','terrace','water','structure'].includes(String(input.type))
+    ? input.type as GardenElementType
+    : 'path',
+  name:input.name || elementLabels[(input.type as GardenElementType)||'path'] || `Element ${index+1}`,
+  x:Number.isFinite(Number(input.x)) ? Number(input.x) : 38,
+  y:Number.isFinite(Number(input.y)) ? Number(input.y) : 44,
+  width:Number.isFinite(Number(input.width)) ? Number(input.width) : 20,
+  height:Number.isFinite(Number(input.height)) ? Number(input.height) : 8,
+});
+
 const loadState = (): PlannerState => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY) || LEGACY_STORAGE_KEYS.map(key=>localStorage.getItem(key)).find(Boolean);
@@ -185,6 +217,7 @@ const loadState = (): PlannerState => {
       showPlanned: parsed.showPlanned ?? true,
       plants: Array.isArray(parsed.plants) ? parsed.plants.map((p,i)=>normalisePlant(p,i)) : clone(initialPlants),
       beds: Array.isArray(parsed.beds) ? parsed.beds.map((b,i)=>normaliseBed(b,i)) : clone(initialBeds),
+      elements: Array.isArray(parsed.elements) ? parsed.elements.map((item,i)=>normaliseElement(item,i)) : [],
       selected: parsed.selected ?? null,
     };
   } catch {
@@ -216,6 +249,8 @@ let interaction:
   | { type:'plant'; id:string; offsetX:number; offsetY:number; startX:number; startY:number; members:Array<{id:string;x:number;y:number}> }
   | { type:'bed'; id:string; offsetX:number; offsetY:number; startBedX:number; startBedY:number; members:Array<{id:string;x:number;y:number}> }
   | { type:'resize'; id:string; startX:number; startY:number; startW:number; startH:number }
+  | { type:'element'; id:string; offsetX:number; offsetY:number }
+  | { type:'element-resize'; id:string; startX:number; startY:number; startW:number; startH:number }
   | null = null;
 
 const undoStack: string[] = [];
@@ -337,6 +372,7 @@ const scheduleSave = () => {
 const modelSnapshot = () => JSON.stringify({
   plants:state.plants,
   beds:state.beds,
+  elements:state.elements,
   selected:state.selected,
 });
 
@@ -358,9 +394,10 @@ const pushHistory = () => {
 };
 
 const restoreModel = (raw:string) => {
-  const parsed = JSON.parse(raw) as Pick<PlannerState,'plants'|'beds'|'selected'>;
+  const parsed = JSON.parse(raw) as Pick<PlannerState,'plants'|'beds'|'elements'|'selected'>;
   state.plants = parsed.plants.map((p,i)=>normalisePlant(p,i));
   state.beds = parsed.beds.map((b,i)=>normaliseBed(b,i));
+  state.elements = Array.isArray(parsed.elements) ? parsed.elements.map((item,i)=>normaliseElement(item,i)) : [];
   state.selected = parsed.selected ?? null;
   syncScene();
   scheduleSave();
