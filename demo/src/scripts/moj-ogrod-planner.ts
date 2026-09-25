@@ -45,6 +45,7 @@ type PlannerState = {
   snap: boolean;
   growthYear: number;
   currentMonth: number;
+  gardenWidthM: number;
   showPlanted: boolean;
   showPlanned: boolean;
   plants: PlantState[];
@@ -123,6 +124,7 @@ const defaultState: PlannerState = {
   snap:true,
   growthYear:3,
   currentMonth:0,
+  gardenWidthM:20,
   showPlanted:true,
   showPlanned:true,
   plants:clone(initialPlants),
@@ -178,6 +180,7 @@ const loadState = (): PlannerState => {
       snap: parsed.snap ?? true,
       growthYear: clamp(Number(parsed.growthYear) || 3, 1, 5),
       currentMonth: clamp(Number(parsed.currentMonth) || 0, 0, 12),
+      gardenWidthM: clamp(Number(parsed.gardenWidthM) || 20, 2, 200),
       showPlanted: parsed.showPlanted ?? true,
       showPlanned: parsed.showPlanned ?? true,
       plants: Array.isArray(parsed.plants) ? parsed.plants.map((p,i)=>normalisePlant(p,i)) : clone(initialPlants),
@@ -223,6 +226,9 @@ let paintStroke = false;
 let paintSourceId: string | null = null;
 let lastPaintPoint: {x:number;y:number} | null = null;
 let paintSequence = 0;
+let measureMode=false;
+let measureStart:{x:number;y:number}|null=null;
+let measurement:{start:{x:number;y:number};end:{x:number;y:number}}|null=null;
 
 const snap = (v:number) => state.snap ? Math.round(v / SNAP_STEP) * SNAP_STEP : v;
 const growthFactors = [0,.35,.55,.72,.86,1];
@@ -273,6 +279,49 @@ const bloomContinuity = (bed:BedState) => {
     active:core.filter(month=>months.has(month)).length,
     months,
   };
+};
+
+const renderMeasurement=()=>{
+  const layer=q<HTMLElement>('[data-measure-layer]');
+  if (!layer) return;
+  if (!measurement) {
+    layer.innerHTML='';
+    return;
+  }
+  const {start,end}=measurement;
+  const rect=scene.getBoundingClientRect();
+  const dxPx=((end.x-start.x)/100)*rect.width;
+  const dyPx=((end.y-start.y)/100)*rect.height;
+  const boundaryWidthPx=rect.width*.84;
+  const meters=Math.hypot(dxPx,dyPx)/(boundaryWidthPx/state.gardenWidthM);
+  const midX=(start.x+end.x)/2;
+  const midY=(start.y+end.y)/2;
+  layer.innerHTML=`
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}" />
+      <circle cx="${start.x}" cy="${start.y}" r=".65" />
+      <circle cx="${end.x}" cy="${end.y}" r=".65" />
+    </svg>
+    <span class="measurement-label" style="left:${midX}%;top:${midY}%">${meters.toFixed(2)} m</span>
+  `;
+};
+
+const focusContextBed=()=>{
+  const bed=getContextBed();
+  if (!bed) return;
+  const cx=bed.x+bed.width/2;
+  const cy=bed.y+bed.height/2;
+  scene.style.transformOrigin=`${cx}% ${cy}%`;
+  setZoom(1.45);
+};
+
+const updateMeasureUi=()=>{
+  const button=q<HTMLButtonElement>('[data-measure]');
+  if (button) {
+    button.classList.toggle('active-tool',measureMode);
+    button.textContent=measureMode ? (measureStart?'Kliknij punkt B':'Kliknij punkt A') : 'Zmierz';
+  }
+  scene.classList.toggle('measure-mode',measureMode);
 };
 
 const scheduleSave = () => {
@@ -1034,6 +1083,9 @@ const updateDesignerTools = () => {
 
   const clear=q<HTMLButtonElement>('[data-clear-multiselect]');
   if (clear) clear.disabled=multiSelectedIds.size<2;
+
+  const focus=q<HTMLButtonElement>('[data-focus-context]');
+  if (focus) focus.disabled=!getContextBed();
 };
 
 const setSinglePlantSelection = (id:string) => {
@@ -1294,6 +1346,26 @@ const syncScene = () => {
 scene.addEventListener('pointerdown', event => {
   const target = event.target as HTMLElement;
 
+  if (measureMode) {
+    event.preventDefault();
+    const rect=scene.getBoundingClientRect();
+    const point={
+      x:clamp(((event.clientX-rect.left)/rect.width)*100,0,100),
+      y:clamp(((event.clientY-rect.top)/rect.height)*100,0,100),
+    };
+    if (!measureStart) {
+      measureStart=point;
+      measurement=null;
+    } else {
+      measurement={start:measureStart,end:point};
+      measureStart=null;
+      measureMode=false;
+      renderMeasurement();
+    }
+    updateMeasureUi();
+    return;
+  }
+
   if (paintMode && !target.closest('[data-plant-id]') && !target.closest('[data-resize-bed]')) {
     const source=paintSourceId ? state.plants.find(p=>p.id===paintSourceId) : undefined;
     if (source) {
@@ -1469,11 +1541,37 @@ const setZoom=(next:number)=>{
 
 q('[data-zoom-in]')?.addEventListener('click',()=>setZoom(state.zoom+.1));
 q('[data-zoom-out]')?.addEventListener('click',()=>setZoom(state.zoom-.1));
-q('[data-zoom-reset]')?.addEventListener('click',()=>setZoom(1));
-q('[data-fit]')?.addEventListener('click',()=>setZoom(.9));
+q('[data-zoom-reset]')?.addEventListener('click',()=>{
+  scene.style.transformOrigin='50% 50%';
+  setZoom(1);
+});
+q('[data-fit]')?.addEventListener('click',()=>{
+  scene.style.transformOrigin='50% 50%';
+  setZoom(.9);
+});
 q('[data-undo]')?.addEventListener('click',undo);
 q('[data-redo]')?.addEventListener('click',redo);
 
+
+
+q('[data-focus-context]')?.addEventListener('click',focusContextBed);
+
+q('[data-measure]')?.addEventListener('click',()=>{
+  measureMode=!measureMode;
+  measureStart=null;
+  if (measureMode) {
+    paintMode=false;
+    updateDesignerTools();
+  }
+  updateMeasureUi();
+});
+
+q<HTMLInputElement>('[data-garden-width]')?.addEventListener('change',e=>{
+  state.gardenWidthM=clamp(Number((e.currentTarget as HTMLInputElement).value)||20,2,200);
+  (e.currentTarget as HTMLInputElement).value=String(state.gardenWidthM);
+  renderMeasurement();
+  scheduleSave();
+});
 
 qa<HTMLElement>('[data-open-view]').forEach(button=>{
   button.addEventListener('click',()=>openWorkspaceView(button.dataset.openView||'planner',button));
@@ -1734,12 +1832,20 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   state.showPlanned=true;
   state.growthYear=3;
   state.currentMonth=0;
+  state.gardenWidthM=20;
+  measureMode=false;
+  measureStart=null;
+  measurement=null;
   syncScene();
   setZoom(1);
   q('[data-toggle-snap]')!.textContent='Snap: ON';
   q('[data-snap-state]')!.textContent='10 px';
   const growth=q<HTMLInputElement>('[data-growth-year]');
   if (growth) growth.value='3';
+  const gardenWidth=q<HTMLInputElement>('[data-garden-width]');
+  if (gardenWidth) gardenWidth.value='20';
+  renderMeasurement();
+  updateMeasureUi();
   q('[data-growth-label]')!.textContent='rok 3/5';
   qa<HTMLButtonElement>('[data-month]').forEach(btn=>btn.classList.toggle('active',btn.dataset.month==='0'));
 });
@@ -1749,7 +1855,7 @@ const projectPayload=()=>({
   format:'moj-ogrod-planner',
   version:6,
   exportedAt:new Date().toISOString(),
-  project:{name:'Ogród domowy',location:'Rzeszów'},
+  project:{name:'Ogród domowy',location:'Rzeszów',gardenWidthM:state.gardenWidthM},
   plants:state.plants,
   beds:state.beds,
   simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
@@ -1849,6 +1955,7 @@ const adaptImportedBackup=(parsed:any)=>{
       beds:Array.isArray(parsed.beds) ? parsed.beds.map((bed:Partial<BedState>,i:number)=>normaliseBed(bed,i)) : clone(initialBeds),
       simulation:parsed.simulation,
       layers:parsed.layers,
+      gardenWidthM:parsed.project?.gardenWidthM ?? parsed.gardenWidthM,
     };
   }
 
@@ -1919,6 +2026,7 @@ const adaptImportedBackup=(parsed:any)=>{
     beds,
     simulation:parsed?.simulation || root?.simulation,
     layers:parsed?.layers || root?.layers,
+    gardenWidthM:parsed?.gardenWidthM ?? root?.gardenWidthM ?? root?.widthMeters ?? root?.widthM,
   };
 };
 
@@ -1959,6 +2067,9 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     pushHistory();
     state.plants=imported.plants;
     state.beds=imported.beds;
+    state.gardenWidthM=clamp(Number(imported.gardenWidthM)||20,2,200);
+    const gardenWidth=q<HTMLInputElement>('[data-garden-width]');
+    if (gardenWidth) gardenWidth.value=String(state.gardenWidthM);
     if (imported.layers) {
       state.showPlanted=imported.layers.showPlanted ?? true;
       state.showPlanned=imported.layers.showPlanned ?? true;
@@ -2020,6 +2131,8 @@ q('[data-toggle-snap]')!.textContent=`Snap: ${state.snap?'ON':'OFF'}`;
 q('[data-snap-state]')!.textContent=state.snap?'10 px':'wyłączony';
 const growthInput=q<HTMLInputElement>('[data-growth-year]');
 if (growthInput) growthInput.value=String(state.growthYear);
+const gardenWidthInput=q<HTMLInputElement>('[data-garden-width]');
+if (gardenWidthInput) gardenWidthInput.value=String(state.gardenWidthM);
 q('[data-growth-label]')!.textContent=`rok ${state.growthYear}/5`;
 qa<HTMLButtonElement>('[data-month]').forEach(btn=>btn.classList.toggle('active',Number(btn.dataset.month)===state.currentMonth));
 if (state.selected?.type==='plant') {
@@ -2028,4 +2141,6 @@ if (state.selected?.type==='plant') {
 }
 updateHistoryButtons();
 syncScene();
+renderMeasurement();
+updateMeasureUi();
 setZoom(state.zoom);
