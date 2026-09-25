@@ -6,6 +6,7 @@ on:
       - work/migration
     paths:
       - 'preview/**'
+      - '.github/workflows/planner-preview-pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,6 +18,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Extract preview JavaScript
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('preview/index.html').read_text(encoding='utf-8')
+          start = html.rfind('<script>')
+          end = html.rfind('</script>')
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('Preview script block not found')
+          Path('/tmp/planner-preview.js').write_text(html[start+8:end], encoding='utf-8')
+          PY
+
+      - name: Validate preview JavaScript syntax
+        run: node --check /tmp/planner-preview.js
 
       - name: Upload standalone planner preview
         uses: actions/upload-artifact@v4
