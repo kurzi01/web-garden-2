@@ -979,3 +979,50 @@ button,input,select { font:inherit; }
   background:#ded9ce;
   border-color:#6f776d;
 }
+
+
+.garden-boundary-svg {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  z-index:0;
+  pointer-events:none;
+  overflow:visible;
+}
+.garden-boundary-svg polygon {
+  fill:rgba(218,230,207,.32);
+  stroke:#7a8d72;
+  stroke-width:.32;
+  vector-effect:non-scaling-stroke;
+}
+.boundary-handles {
+  position:absolute;
+  inset:0;
+  z-index:20;
+  pointer-events:none;
+}
+.boundary-handle {
+  position:absolute;
+  width:16px;
+  height:16px;
+  padding:0;
+  transform:translate(-50%,-50%);
+  border:3px solid #fff;
+  border-radius:50%;
+  background:var(--mg-accent);
+  box-shadow:0 3px 10px rgba(37,54,39,.24);
+  cursor:move;
+  pointer-events:auto;
+  touch-action:none;
+}
+.planner-scene.boundary-edit-mode .garden-boundary-svg polygon {
+  fill:rgba(218,230,207,.18);
+  stroke:#305d3d;
+  stroke-dasharray:1.2 1;
+}
+.planner-scene.boundary-edit-mode .plant-dot,
+.planner-scene.boundary-edit-mode .bed,
+.planner-scene.boundary-edit-mode .garden-element {
+  opacity:.72;
+}
