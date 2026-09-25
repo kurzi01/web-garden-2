@@ -2,13 +2,13 @@
 import '../styles/moj-ogrod-planner.scss';
 
 const nav = [
-  ['Plan ogrodu', 'aktywny'],
-  ['Rabaty i sektory', '3'],
-  ['Rośliny', '210'],
-  ['Mój ogród', '56'],
-  ['Zakupy', '12'],
-  ['Studio', ''],
-  ['Analiza', ''],
+  ['Plan ogrodu', 'aktywny', 'planner'],
+  ['Rabaty i sektory', '3', 'planner'],
+  ['Rośliny', '210', 'planner'],
+  ['Mój ogród', '', 'garden'],
+  ['Zakupy', '', 'shopping'],
+  ['Studio', '', 'studio'],
+  ['Analiza', '', 'analysis'],
 ];
 
 const libraryPlants = [
@@ -53,15 +53,23 @@ const libraryPlants = [
       <div class="planner-body">
         <aside class="sidebar left">
           <div class="section-kicker">Projekt</div>
-          {nav.slice(0, 4).map(([label, count], i) => (
-            <button class:list={['nav-item', { active: i === 0 }]}>
-              <span>{label}</span>{count && <small>{count}</small>}
+          {nav.slice(0, 4).map(([label, count, view], i) => (
+            <button class:list={['nav-item', { active: i === 0 }]} data-open-view={view}>
+              <span>{label}</span>
+              {label === 'Mój ogród'
+                ? <small data-nav-garden-count>0</small>
+                : count && <small>{count}</small>}
             </button>
           ))}
 
           <div class="section-kicker">Planowanie</div>
-          {nav.slice(4).map(([label, count]) => (
-            <button class="nav-item"><span>{label}</span>{count && <small>{count}</small>}</button>
+          {nav.slice(4).map(([label, count, view]) => (
+            <button class="nav-item" data-open-view={view}>
+              <span>{label}</span>
+              {label === 'Zakupy'
+                ? <small data-nav-shopping-count>0</small>
+                : count && <small>{count}</small>}
+            </button>
           ))}
 
           <div class="section-kicker">Biblioteka roślin</div>
@@ -107,6 +115,8 @@ const libraryPlants = [
           </div>
 
           <div class="section-kicker">Warstwy</div>
+          <button class="nav-item" data-layer-toggle="planted"><span>Rośliny posadzone</span><small data-layer-planted-state>✓</small></button>
+          <button class="nav-item" data-layer-toggle="planned"><span>Rośliny planowane</span><small data-layer-planned-state>✓</small></button>
           <button class="nav-item"><span>Rośliny poza rabatą</span><small data-outside-count>0</small></button>
           <button class="nav-item"><span>Niedopasowane do stanowiska</span><small data-mismatch-count>0</small></button>
           <button class="nav-item"><span>Snap do siatki</span><small data-snap-state>10 px</small></button>
@@ -182,6 +192,60 @@ const libraryPlants = [
             <div class="metric"><strong data-kpi-mismatch>0</strong><span>źle dobrane stanowisko</span></div>
             <div class="metric"><strong data-kpi-collisions>0</strong><span>roślin w kolizji</span></div>
           </section>
+
+          <section class="workspace-overlay" data-workspace-view="garden" hidden>
+            <div class="overlay-header">
+              <div>
+                <span class="section-kicker">Migracja mobile → web</span>
+                <h2>Mój ogród</h2>
+                <p>Operacyjna lista roślin z projektem rabat. Status zmienia warstwy i zakupy.</p>
+              </div>
+              <button class="icon-btn" data-close-view aria-label="Zamknij">×</button>
+            </div>
+            <div class="overlay-summary" data-garden-summary></div>
+            <div class="garden-table" data-garden-list></div>
+          </section>
+
+          <section class="workspace-overlay" data-workspace-view="shopping" hidden>
+            <div class="overlay-header">
+              <div>
+                <span class="section-kicker">Zakupy + budżet</span>
+                <h2>Lista zakupów projektu</h2>
+                <p>Generowana automatycznie z roślin oznaczonych jako planowane. Ceny są edytowalne.</p>
+              </div>
+              <button class="icon-btn" data-close-view aria-label="Zamknij">×</button>
+            </div>
+            <div class="budget-hero">
+              <div><span>Pozycje</span><strong data-shopping-lines>0</strong></div>
+              <div><span>Rośliny do kupienia</span><strong data-shopping-plants>0</strong></div>
+              <div><span>Budżet</span><strong data-shopping-total>0,00 zł</strong></div>
+            </div>
+            <div class="shopping-sections" data-shopping-list></div>
+          </section>
+
+          <section class="workspace-overlay" data-workspace-view="studio" hidden>
+            <div class="overlay-header">
+              <div>
+                <span class="section-kicker">Studio</span>
+                <h2>Studio kompozycji</h2>
+                <p>Porównanie rabat: pokrycie, stanowisko, warstwowanie, rytm i ciągłość kwitnienia.</p>
+              </div>
+              <button class="icon-btn" data-close-view aria-label="Zamknij">×</button>
+            </div>
+            <div class="studio-grid" data-studio-grid></div>
+          </section>
+
+          <section class="workspace-overlay" data-workspace-view="analysis" hidden>
+            <div class="overlay-header">
+              <div>
+                <span class="section-kicker">Analiza projektu</span>
+                <h2>Garden Intelligence</h2>
+                <p>Problemy i rekomendacje liczone z aktualnego projektu, warunków i roku wzrostu.</p>
+              </div>
+              <button class="icon-btn" data-close-view aria-label="Zamknij">×</button>
+            </div>
+            <div class="analysis-dashboard" data-project-analysis></div>
+          </section>
         </main>
 
         <aside class="sidebar right">
@@ -193,6 +257,13 @@ const libraryPlants = [
               <span class="badge" data-inspector-type>roślina</span>
             </div>
             <div class="property-row"><span>Przynależność</span><strong data-inspector-bed>—</strong></div>
+            <label class="property-row status-row">
+              <span>Status</span>
+              <select data-inspector-status disabled>
+                <option value="planted">posadzona</option>
+                <option value="planned">planowana</option>
+              </select>
+            </label>
             <div class="property-row"><span>Pozycja</span><strong data-inspector-position>—</strong></div>
             <div class="property-row"><span>Rozstaw</span><strong data-inspector-spacing>—</strong></div>
             <div class="property-row"><span>Szerokość docelowa</span><strong data-inspector-spread>—</strong></div>
