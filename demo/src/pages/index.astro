@@ -12,14 +12,14 @@ const nav = [
 ];
 
 const libraryPlants = [
-  { name:'Hortensja bukietowa', latin:'Hydrangea paniculata', spacing:90, height:180, short:'H', seasons:'summer,autumn', sun:'sun,partial', moisture:'normal,moist', ph:'acid,neutral,alkaline', soil:'żyzna, próchniczna i przepuszczalna' },
-  { name:'Sosna bośniacka Compact Gem', latin:"Pinus heldreichii 'Compact Gem'", spacing:120, height:250, short:'S', seasons:'spring,summer,autumn,winter', sun:'sun', moisture:'dry,normal', ph:'acid,neutral,alkaline', soil:'przepuszczalna; bez zastoin wody' },
-  { name:'Paproć ogrodowa', latin:'Dryopteris', spacing:55, height:90, short:'P', seasons:'spring,summer,autumn', sun:'shade,partial', moisture:'moist', ph:'acid,neutral,alkaline', soil:'próchniczna, stale lekko wilgotna' },
-  { name:'Hakonechloa smukła', latin:'Hakonechloa macra', spacing:50, height:45, short:'Ha', seasons:'summer,autumn,winter', sun:'sun,partial,shade', moisture:'moist', ph:'acid,neutral,alkaline', soil:'próchniczna, żyzna i wilgotna' },
-  { name:'Żurawka', latin:'Heuchera', spacing:35, height:35, short:'Ż', seasons:'spring,summer,autumn,winter', sun:'partial,shade', moisture:'normal,moist', ph:'acid,neutral', soil:'próchniczna i przepuszczalna' },
-  { name:'Funkia', latin:'Hosta', spacing:60, height:60, short:'F', seasons:'spring,summer,autumn', sun:'partial,shade', moisture:'moist', ph:'acid,neutral,alkaline', soil:'żyzna, próchniczna i wilgotna' },
-  { name:'Rozplenica japońska', latin:'Pennisetum alopecuroides', spacing:70, height:90, short:'R', seasons:'summer,autumn,winter', sun:'sun', moisture:'dry,normal', ph:'neutral,alkaline', soil:'przepuszczalna, umiarkowanie żyzna' },
-  { name:'Tawułka Arendsa', latin:'Astilbe × arendsii', spacing:45, height:75, short:'T', seasons:'summer', sun:'partial,shade', moisture:'moist', ph:'acid,neutral', soil:'żyzna, próchniczna i wilgotna' },
+  { name:'Hortensja bukietowa', latin:'Hydrangea paniculata', spacing:90, height:180, spread:180, short:'H', seasons:'summer,autumn', bloom:'7,8,9,10', evergreen:'false', sun:'sun,partial', moisture:'normal,moist', ph:'acid,neutral,alkaline', soil:'żyzna, próchniczna i przepuszczalna' },
+  { name:'Sosna bośniacka Compact Gem', latin:"Pinus heldreichii 'Compact Gem'", spacing:120, height:250, spread:200, short:'S', seasons:'spring,summer,autumn,winter', bloom:'', evergreen:'true', sun:'sun', moisture:'dry,normal', ph:'acid,neutral,alkaline', soil:'przepuszczalna; bez zastoin wody' },
+  { name:'Paproć ogrodowa', latin:'Dryopteris', spacing:55, height:90, spread:75, short:'P', seasons:'spring,summer,autumn', bloom:'', evergreen:'false', sun:'shade,partial', moisture:'moist', ph:'acid,neutral,alkaline', soil:'próchniczna, stale lekko wilgotna' },
+  { name:'Hakonechloa smukła', latin:'Hakonechloa macra', spacing:50, height:45, spread:50, short:'Ha', seasons:'summer,autumn,winter', bloom:'7,8', evergreen:'false', sun:'sun,partial,shade', moisture:'moist', ph:'acid,neutral,alkaline', soil:'próchniczna, żyzna i wilgotna' },
+  { name:'Żurawka', latin:'Heuchera', spacing:35, height:35, spread:45, short:'Ż', seasons:'spring,summer,autumn,winter', bloom:'5,6,7', evergreen:'true', sun:'partial,shade', moisture:'normal,moist', ph:'acid,neutral', soil:'próchniczna i przepuszczalna' },
+  { name:'Funkia', latin:'Hosta', spacing:60, height:60, spread:75, short:'F', seasons:'spring,summer,autumn', bloom:'7,8,9', evergreen:'false', sun:'partial,shade', moisture:'moist', ph:'acid,neutral,alkaline', soil:'żyzna, próchniczna i wilgotna' },
+  { name:'Rozplenica japońska', latin:'Pennisetum alopecuroides', spacing:70, height:90, spread:120, short:'R', seasons:'summer,autumn,winter', bloom:'8,9,10', evergreen:'false', sun:'sun', moisture:'dry,normal', ph:'neutral,alkaline', soil:'przepuszczalna, umiarkowanie żyzna' },
+  { name:'Tawułka Arendsa', latin:'Astilbe × arendsii', spacing:45, height:75, spread:60, short:'T', seasons:'summer', bloom:'7,8,9,10', evergreen:'false', sun:'partial,shade', moisture:'moist', ph:'acid,neutral', soil:'żyzna, próchniczna i wilgotna' },
 ];
 ---
 
@@ -85,6 +85,9 @@ const libraryPlants = [
                 data-library-latin={plant.latin}
                 data-library-spacing={plant.spacing}
                 data-library-height={plant.height}
+                data-library-spread={plant.spread}
+                data-library-bloom={plant.bloom}
+                data-library-evergreen={plant.evergreen}
                 data-library-short={plant.short}
                 data-library-seasons={plant.seasons}
                 data-library-sun={plant.sun}
@@ -129,6 +132,20 @@ const libraryPlants = [
             </div>
           </div>
 
+          <section class="simulation-bar">
+            <div class="simulation-growth">
+              <strong>Symulacja wzrostu</strong>
+              <input type="range" min="1" max="5" step="1" value="3" data-growth-year />
+              <span class="badge" data-growth-label>rok 3/5</span>
+            </div>
+            <div class="simulation-months" aria-label="Miesiąc symulacji">
+              <button class="month-chip active" data-month="0">Cały rok</button>
+              {['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'].map((month, index) => (
+                <button class="month-chip" data-month={index + 1}>{month}</button>
+              ))}
+            </div>
+          </section>
+
           <section class="canvas" aria-label="Plan ogrodu">
             <div class="planner-scene" data-planner-scene>
               <div class="garden-boundary"></div>
@@ -162,6 +179,7 @@ const libraryPlants = [
             <div class="property-row"><span>Przynależność</span><strong data-inspector-bed>—</strong></div>
             <div class="property-row"><span>Pozycja</span><strong data-inspector-position>—</strong></div>
             <div class="property-row"><span>Rozstaw</span><strong data-inspector-spacing>—</strong></div>
+            <div class="property-row"><span>Szerokość docelowa</span><strong data-inspector-spread>—</strong></div>
             <div class="property-row"><span>Wysokość docelowa</span><strong data-inspector-height>—</strong></div>
           </div>
 
@@ -207,15 +225,45 @@ const libraryPlants = [
                 <option value="alkaline">Zasadowy</option>
               </select>
             </label>
+            <label class="field-row">
+              <span>Front rabaty</span>
+              <select data-bed-front disabled>
+                <option value="bottom">Dół planu</option>
+                <option value="top">Góra planu</option>
+                <option value="left">Lewa strona</option>
+                <option value="right">Prawa strona</option>
+              </select>
+            </label>
             <p class="panel-note">Zmiana warunków natychmiast przelicza dobór roślin w tej rabacie.</p>
           </div>
 
           <div class="panel-card">
             <h3>Analiza rabaty</h3>
-            <div class="property-row"><span>Pokrycie</span><strong data-bed-coverage>—</strong></div>\n            <div class="property-row"><span>Dopasowanie roślin</span><strong data-bed-fit>—</strong></div>
+            <div class="property-row"><span>Pokrycie</span><strong data-bed-coverage>—</strong></div>
+            <div class="property-row"><span>Dopasowanie roślin</span><strong data-bed-fit>—</strong></div>
             <div class="property-row"><span>Niskie piętro</span><strong data-layer-low>—</strong></div>
             <div class="property-row"><span>Średnie piętro</span><strong data-layer-mid>—</strong></div>
             <div class="property-row"><span>Wysokie piętro</span><strong data-layer-high>—</strong></div>
+          </div>
+
+          <div class="panel-card">
+            <h3>Kompozycja 2.0</h3>
+            <div class="property-row"><span>Warstwowanie</span><strong data-composition-layering>—</strong></div>
+            <div class="property-row"><span>Rytm / powtórzenia</span><strong data-composition-rhythm>—</strong></div>
+            <div class="property-row"><span>Ciągłość kwitnienia</span><strong data-composition-bloom>—</strong></div>
+            <div class="property-row"><span>Dominanta</span><strong class="property-long" data-composition-dominant>—</strong></div>
+            <p class="panel-note" data-composition-note>Wybierz rabatę, aby przeanalizować strukturę nasadzeń.</p>
+          </div>
+
+          <div class="panel-card">
+            <h3>Kalendarz kwitnienia</h3>
+            <div class="bloom-calendar" data-bloom-calendar>
+              {['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'].map((month, index) => (
+                <div class="bloom-month" data-bloom-month={index + 1}>
+                  <span>{month}</span><i></i>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div class="panel-card">
