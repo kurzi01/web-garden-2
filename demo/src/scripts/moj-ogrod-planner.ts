@@ -185,7 +185,7 @@ if (!scene) throw new Error('Planner scene missing.');
 
 let saveTimer = 0;
 let interaction:
-  | { type:'plant'; id:string; offsetX:number; offsetY:number }
+  | { type:'plant'; id:string; offsetX:number; offsetY:number; startX:number; startY:number; members:Array<{id:string;x:number;y:number}> }
   | { type:'bed'; id:string; offsetX:number; offsetY:number; startBedX:number; startBedY:number; members:Array<{id:string;x:number;y:number}> }
   | { type:'resize'; id:string; startX:number; startY:number; startW:number; startH:number }
   | null = null;
@@ -725,6 +725,7 @@ const updateDesignerTools = () => {
     paint.classList.toggle('active-tool', paintMode);
     paint.textContent=paintMode ? 'Pędzel: ON' : 'Pędzel nasadzeń';
   }
+  scene.classList.toggle('paint-mode',paintMode);
 
   const clear=q<HTMLButtonElement>('[data-clear-multiselect]');
   if (clear) clear.disabled=multiSelectedIds.size<2;
@@ -897,14 +898,20 @@ const duplicateSelection = () => {
 
   pushHistory();
 
-  const candidates=[[6,0],[-6,0],[0,6],[0,-6],[6,6],[-6,6],[6,-6],[-6,-6]];
-  let offset={x:4,y:4};
+  const step=Math.max(5,Math.max(...plants.map(plant=>effectiveSpread(plant)/18))*1.15);
+  const candidates=[[step,0],[-step,0],[0,step],[0,-step],[step,step],[-step,step],[step,-step],[-step,-step]];
+  const selectedSet=new Set(plants.map(plant=>plant.id));
+  const obstacles=plantsInBed(bed).filter(plant=>!selectedSet.has(plant.id));
+  let offset={x:step,y:step};
+
   for (const [dx,dy] of candidates) {
-    const fits=plants.every(plant=>{
-      const x=plant.x+dx, y=plant.y+dy;
-      return x>=bed.x+2 && x<=bed.x+bed.width-2 && y>=bed.y+2 && y<=bed.y+bed.height-2;
-    });
-    if (fits) {
+    const placements=plants.map(plant=>({plant,x:plant.x+dx,y:plant.y+dy}));
+    const inside=placements.every(({x,y})=>x>=bed.x+2&&x<=bed.x+bed.width-2&&y>=bed.y+2&&y<=bed.y+bed.height-2);
+    const clear=inside && placements.every(({plant,x,y})=>obstacles.every(other=>{
+      const required=Math.max(3.5,((effectiveSpread(plant)+effectiveSpread(other))/2)/18);
+      return Math.hypot(x-other.x,y-other.y)>=required*.92;
+    }));
+    if (clear) {
       offset={x:dx,y:dy};
       break;
     }
@@ -1012,10 +1019,26 @@ scene.addEventListener('pointerdown', event => {
       return;
     }
 
-    setSinglePlantSelection(id);
+    const keepGroup=multiSelectedIds.size>1 && multiSelectedIds.has(id);
+    if (!keepGroup) setSinglePlantSelection(id);
+    else {
+      state.selected={type:'plant',id};
+      paintSourceId=id;
+    }
+    const activePlants=getSelectedPlants();
+    const anchor=state.plants.find(p=>p.id===id);
+    if (!anchor) return;
     const rect=plantEl.getBoundingClientRect();
     pushHistory();
-    interaction={type:'plant',id,offsetX:event.clientX-rect.left-rect.width/2,offsetY:event.clientY-rect.top-rect.height/2};
+    interaction={
+      type:'plant',
+      id,
+      offsetX:event.clientX-rect.left-rect.width/2,
+      offsetY:event.clientY-rect.top-rect.height/2,
+      startX:anchor.x,
+      startY:anchor.y,
+      members:activePlants.map(p=>({id:p.id,x:p.x,y:p.y})),
+    };
     plantEl.setPointerCapture(event.pointerId);
     plantEl.classList.add('dragging');
     renderSelection();
@@ -1063,12 +1086,24 @@ scene.addEventListener('pointermove', event => {
   const rect=scene.getBoundingClientRect();
 
   if (interaction.type==='plant') {
-    const p=state.plants.find(x=>x.id===interaction?.id);
-    const el=scene.querySelector<HTMLElement>(`[data-plant-id="${interaction.id}"]`);
-    if (!p||!el) return;
-    p.x=clamp(snap(((event.clientX-rect.left-interaction.offsetX)/rect.width)*100),2,98);
-    p.y=clamp(snap(((event.clientY-rect.top-interaction.offsetY)/rect.height)*100),3,97);
-    setPlantPosition(el,p);
+    const anchor=state.plants.find(x=>x.id===interaction.id);
+    if (!anchor) return;
+    const targetX=snap(((event.clientX-rect.left-interaction.offsetX)/rect.width)*100);
+    const targetY=snap(((event.clientY-rect.top-interaction.offsetY)/rect.height)*100);
+    const minDx=Math.max(...interaction.members.map(member=>2-member.x));
+    const maxDx=Math.min(...interaction.members.map(member=>98-member.x));
+    const minDy=Math.max(...interaction.members.map(member=>3-member.y));
+    const maxDy=Math.min(...interaction.members.map(member=>97-member.y));
+    const dx=clamp(targetX-interaction.startX,minDx,maxDx);
+    const dy=clamp(targetY-interaction.startY,minDy,maxDy);
+    interaction.members.forEach(member=>{
+      const plant=state.plants.find(item=>item.id===member.id);
+      const el=scene.querySelector<HTMLElement>(`[data-plant-id="${member.id}"]`);
+      if (!plant||!el) return;
+      plant.x=member.x+dx;
+      plant.y=member.y+dy;
+      setPlantPosition(el,plant);
+    });
   } else if (interaction.type==='bed') {
     const b=state.beds.find(x=>x.id===interaction.id);
     const el=scene.querySelector<HTMLElement>(`[data-bed-id="${interaction.id}"]`);
