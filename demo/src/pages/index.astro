@@ -44,9 +44,17 @@ const libraryPlants = [
         </div>
         <div class="top-actions">
           <button class="icon-btn" title="Przywróć projekt" data-reset-project>↺</button>
-          <button class="ghost-btn" data-import-project>Import JSON</button>
+          <button class="ghost-btn" data-import-project>Import backupu</button>
           <input type="file" accept=".json,application/json" hidden data-import-input />
-          <button class="primary-btn" data-export-project>Eksport JSON</button>
+          <details class="export-menu">
+            <summary class="primary-btn">Eksport</summary>
+            <div class="export-popover">
+              <button data-export-project>Projekt JSON</button>
+              <button data-export-csv>Rośliny CSV</button>
+              <button data-export-html>Raport HTML</button>
+              <button data-export-pdf>Raport PDF</button>
+            </div>
+          </details>
         </div>
       </header>
 
