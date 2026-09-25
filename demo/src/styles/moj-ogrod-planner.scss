@@ -792,3 +792,39 @@ button,input,select { font:inherit; }
   .shopping-row { grid-template-columns:1fr 80px 110px; }
   .shopping-line-total { grid-column:3; }
 }
+
+
+.export-menu { position:relative; }
+.export-menu > summary {
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  user-select:none;
+}
+.export-menu > summary::-webkit-details-marker { display:none; }
+.export-popover {
+  position:absolute;
+  right:0;
+  top:44px;
+  z-index:80;
+  width:178px;
+  padding:6px;
+  border:1px solid var(--mg-line);
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 16px 40px rgba(37,54,39,.14);
+}
+.export-popover button {
+  width:100%;
+  min-height:34px;
+  padding:7px 9px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--mg-text);
+  text-align:left;
+  cursor:pointer;
+  font-size:11px;
+}
+.export-popover button:hover { background:var(--mg-panel-soft); }
