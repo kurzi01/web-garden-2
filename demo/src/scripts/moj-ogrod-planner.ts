@@ -1744,24 +1744,203 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   qa<HTMLButtonElement>('[data-month]').forEach(btn=>btn.classList.toggle('active',btn.dataset.month==='0'));
 });
 
-q('[data-export-project]')?.addEventListener('click',()=>{
-  const payload={
-    format:'moj-ogrod-planner',
-    version:6,
-    exportedAt:new Date().toISOString(),
-    project:{name:'Ogród domowy',location:'Rzeszów'},
-    plants:state.plants,
-    beds:state.beds,
-    simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
-    layers:{showPlanted:state.showPlanted,showPlanned:state.showPlanned},
-  };
-  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+
+const projectPayload=()=>({
+  format:'moj-ogrod-planner',
+  version:6,
+  exportedAt:new Date().toISOString(),
+  project:{name:'Ogród domowy',location:'Rzeszów'},
+  plants:state.plants,
+  beds:state.beds,
+  simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
+  layers:{showPlanted:state.showPlanted,showPlanned:state.showPlanned},
+});
+
+const downloadContent=(content:string,type:string,filename:string)=>{
+  const blob=new Blob([content],{type});
   const url=URL.createObjectURL(blob);
   const link=document.createElement('a');
   link.href=url;
-  link.download=`moj-ogrod-${new Date().toISOString().slice(0,10)}.json`;
+  link.download=filename;
   link.click();
   window.setTimeout(()=>URL.revokeObjectURL(url),0);
+};
+
+const csvCell=(value:unknown)=>{
+  const text=String(value??'');
+  return `"${text.replaceAll('"','""')}"`;
+};
+
+const buildPlantsCsv=()=>{
+  const headers=['ID','Nazwa','Nazwa łacińska','Status','Rabata','Dopasowanie %','X','Y','Rozstaw cm','Szerokość docelowa cm','Wysokość docelowa cm','Światło','Wilgotność','pH','Podłoże','Kwitnienie'];
+  const rows=state.plants.map(plant=>{
+    const bed=getBedForPlant(plant);
+    const fit=bed ? fitPlantToBed(plant,bed).score : '';
+    return [
+      plant.id,plant.name,plant.latin||'',plant.status==='planted'?'posadzona':'planowana',
+      bed?.name||'',fit,Math.round(plant.x),Math.round(plant.y),plant.spacing,plant.spread,plant.height,
+      formatList(plant.sun,sunLabels),formatList(plant.moisture,moistureLabels),formatList(plant.ph,phLabels),
+      plant.soil,plant.bloomMonths.join(','),
+    ].map(csvCell).join(';');
+  });
+  return '\uFEFF'+[headers.map(csvCell).join(';'),...rows].join('\n');
+};
+
+const buildReportHtml=()=>{
+  const shoppingRows=buildShoppingRows();
+  const budgetTotal=shoppingRows.reduce((sum,row)=>sum+(budgetPrices[row.key]||0)*row.quantity,0);
+  const planted=state.plants.filter(p=>p.status==='planted').length;
+  const planned=state.plants.length-planted;
+  const collisions=getCollisionIds().size;
+  const outside=state.plants.filter(p=>!getBedForPlant(p)).length;
+  const mismatch=state.plants.filter(p=>{
+    const bed=getBedForPlant(p);
+    return bed ? fitPlantToBed(p,bed).score<100 : false;
+  }).length;
+
+  return `<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><title>Raport Mój Ogród</title>
+<style>
+body{font-family:Arial,sans-serif;color:#1f2a1f;margin:34px;line-height:1.4}h1,h2{margin:0 0 10px}h2{margin-top:28px;font-size:18px}
+.meta{color:#697469;margin-bottom:22px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}
+.kpis div,.bed{border:1px solid #d9dfd3;border-radius:10px;padding:12px}.kpis span{display:block;color:#697469;font-size:11px}.kpis strong{font-size:22px}
+table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:7px 8px;border-bottom:1px solid #e6e9e2;text-align:left;vertical-align:top}th{background:#f4f6f0}
+.beds{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.bed h3{margin:0 0 8px}.muted{color:#697469}
+@media print{body{margin:15mm}.no-print{display:none}.kpis,.beds{break-inside:avoid}tr{break-inside:avoid}}
+</style></head><body>
+<h1>Mój Ogród — raport projektu</h1><div class="meta">Ogród domowy · Rzeszów · eksport ${new Date().toLocaleString('pl-PL')}</div>
+<div class="kpis">
+<div><span>Rośliny</span><strong>${state.plants.length}</strong><small>${planted} posadzonych · ${planned} planowanych</small></div>
+<div><span>Rabaty</span><strong>${state.beds.length}</strong><small>rok wzrostu ${state.growthYear}/5</small></div>
+<div><span>Problemy</span><strong>${collisions+mismatch+outside}</strong><small>${collisions} kolizji · ${mismatch} stanowisko · ${outside} poza rabatą</small></div>
+<div><span>Budżet</span><strong>${formatMoney.format(budgetTotal)}</strong><small>na podstawie wpisanych cen</small></div>
+</div>
+<h2>Rabaty</h2><div class="beds">
+${state.beds.map(bed=>`<div class="bed"><h3>${escapeHtml(bed.name)}</h3><div class="muted">${plantsInBed(bed).length} roślin · pokrycie ${coverageForBed(bed)}% · fit ${bedFitPercent(bed)}% · warstwowanie ${layeringScore(bed)}%</div><div>Światło: ${sunLabels[bed.sun]} · wilgotność: ${moistureLabels[bed.moisture]} · pH: ${phLabels[bed.ph]}</div></div>`).join('')}
+</div>
+<h2>Rośliny</h2>
+<table><thead><tr><th>Roślina</th><th>Status</th><th>Rabata</th><th>Stanowisko</th><th>Gabaryt</th><th>Kwitnienie</th></tr></thead><tbody>
+${state.plants.map(plant=>{const bed=getBedForPlant(plant);const fit=bed?fitPlantToBed(plant,bed).score:null;return `<tr><td><strong>${escapeHtml(plant.name)}</strong><br><span class="muted">${escapeHtml(plant.latin||'')}</span></td><td>${plant.status==='planted'?'posadzona':'planowana'}</td><td>${escapeHtml(bed?.name||'poza rabatą')}</td><td>${fit===null?'—':fit+'%'}</td><td>${plant.spread} × ${plant.height} cm</td><td>${plant.bloomMonths.join(', ')||'—'}</td></tr>`}).join('')}
+</tbody></table>
+<h2>Zakupy</h2>
+<table><thead><tr><th>Typ</th><th>Pozycja</th><th>Ilość</th><th>Cena jedn.</th><th>Razem</th></tr></thead><tbody>
+${shoppingRows.map(row=>{const price=budgetPrices[row.key]||0;return `<tr><td>${row.section}</td><td>${escapeHtml(row.name)}</td><td>${row.quantity} ${row.unit}</td><td>${formatMoney.format(price)}</td><td>${formatMoney.format(price*row.quantity)}</td></tr>`}).join('')}
+</tbody></table>
+</body></html>`;
+};
+
+const firstArray=(...values:unknown[])=>values.find(Array.isArray) as any[]|undefined;
+const normalizeMobileStatus=(value:unknown):PlantStatus=>{
+  const status=String(value||'').toLowerCase();
+  if (['planted','posadzona','posadzone','active','existing'].includes(status)) return 'planted';
+  return 'planned';
+};
+
+const adaptImportedBackup=(parsed:any)=>{
+  if (parsed?.format==='moj-ogrod-planner' && Array.isArray(parsed.plants)) {
+    return {
+      source:'planner',
+      plants:parsed.plants.map((plant:Partial<PlantState>,i:number)=>normalisePlant(plant,i)),
+      beds:Array.isArray(parsed.beds) ? parsed.beds.map((bed:Partial<BedState>,i:number)=>normaliseBed(bed,i)) : clone(initialBeds),
+      simulation:parsed.simulation,
+      layers:parsed.layers,
+    };
+  }
+
+  const root=parsed?.data || parsed?.project || parsed?.garden || parsed;
+  const species=firstArray(parsed?.plantSpecies,parsed?.species,parsed?.catalog,root?.plantSpecies,root?.species) || [];
+  const speciesById=new Map(species.map((item:any)=>[String(item.id ?? item.catalogId ?? item.uuid ?? ''),item]));
+  const rawPlants=firstArray(
+    parsed?.plantInstances,parsed?.plants,root?.plantInstances,root?.plants,
+    parsed?.garden?.plants,parsed?.project?.plants,
+  );
+  const rawBeds=firstArray(
+    parsed?.sectors,parsed?.beds,root?.sectors,root?.beds,
+    parsed?.garden?.sectors,parsed?.project?.sectors,
+  );
+
+  if (!rawPlants?.length) throw new Error('Brak roślin w backupie');
+
+  const plants=rawPlants.map((raw:any,index:number)=>{
+    const speciesId=String(raw.speciesId ?? raw.catalogId ?? raw.plantSpeciesId ?? '');
+    const base=speciesById.get(speciesId) || {};
+    const merged={...base,...raw};
+    const position=raw.position || raw.layout || raw.planner || {};
+    const name=merged.namePl || merged.polishName || merged.name || merged.commonName || merged.title || 'Roślina';
+    const plant=normalisePlant({
+      id:String(raw.id ?? raw.uuid ?? `mobile-${index}`),
+      name,
+      latin:merged.latinName || merged.latin || merged.scientificName,
+      short:merged.short || String(name).slice(0,2),
+      x:raw.x ?? position.x ?? 50,
+      y:raw.y ?? position.y ?? 50,
+      spacing:merged.spacing ?? merged.spacingCm ?? merged.plantSpacing,
+      height:merged.height ?? merged.targetHeight ?? merged.heightCm,
+      spread:merged.spread ?? merged.width ?? merged.targetWidth ?? merged.widthCm,
+      bloomMonths:merged.bloomMonths ?? merged.floweringMonths,
+      evergreen:merged.evergreen,
+      seasons:merged.seasons,
+      sun:merged.sun ?? merged.light,
+      moisture:merged.moisture,
+      ph:merged.ph,
+      soil:merged.soil ?? merged.soilType,
+      status:normalizeMobileStatus(raw.status ?? raw.state ?? raw.plantingStatus),
+    },index);
+    plant.status=normalizeMobileStatus(raw.status ?? raw.state ?? raw.plantingStatus);
+    return plant;
+  });
+
+  const beds=rawBeds?.length
+    ? rawBeds.map((raw:any,index:number)=>{
+        const bounds=raw.bounds || raw.layout || raw.rect || {};
+        return normaliseBed({
+          id:String(raw.id ?? raw.uuid ?? `sector-${index}`),
+          name:raw.name || raw.title || `Sektor ${index+1}`,
+          x:raw.x ?? bounds.x ?? 15+index*8,
+          y:raw.y ?? bounds.y ?? 18+index*8,
+          width:raw.width ?? bounds.width ?? 30,
+          height:raw.height ?? bounds.height ?? 22,
+          sun:raw.sun ?? raw.light,
+          moisture:raw.moisture,
+          ph:raw.ph,
+          frontEdge:raw.frontEdge,
+        },index);
+      })
+    : clone(initialBeds);
+
+  return {
+    source:'mobile',
+    plants,
+    beds,
+    simulation:parsed?.simulation || root?.simulation,
+    layers:parsed?.layers || root?.layers,
+  };
+};
+
+q('[data-export-project]')?.addEventListener('click',()=>{
+  downloadContent(JSON.stringify(projectPayload(),null,2),'application/json',`moj-ogrod-${new Date().toISOString().slice(0,10)}.json`);
+});
+
+q('[data-export-csv]')?.addEventListener('click',()=>{
+  downloadContent(buildPlantsCsv(),'text/csv;charset=utf-8',`moj-ogrod-rosliny-${new Date().toISOString().slice(0,10)}.csv`);
+});
+
+q('[data-export-html]')?.addEventListener('click',()=>{
+  downloadContent(buildReportHtml(),'text/html;charset=utf-8',`moj-ogrod-raport-${new Date().toISOString().slice(0,10)}.html`);
+});
+
+q('[data-export-pdf]')?.addEventListener('click',()=>{
+  const report=window.open('','_blank');
+  if (!report) {
+    const badge=q('[data-save-badge]');
+    if (badge) badge.textContent='zezwól na nowe okno';
+    return;
+  }
+  report.document.open();
+  report.document.write(buildReportHtml());
+  report.document.close();
+  report.addEventListener('load',()=>window.setTimeout(()=>report.print(),150));
+  window.setTimeout(()=>report.print(),350);
 });
 
 q('[data-import-project]')?.addEventListener('click',()=>q<HTMLInputElement>('[data-import-input]')?.click());
@@ -1771,17 +1950,17 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
   if (!file) return;
   try {
     const parsed=JSON.parse(await file.text());
-    if (!Array.isArray(parsed.plants) || !Array.isArray(parsed.beds)) throw new Error('Nieprawidłowy format');
+    const imported=adaptImportedBackup(parsed);
     pushHistory();
-    state.plants=parsed.plants.map((p:Partial<PlantState>,i:number)=>normalisePlant(p,i));
-    state.beds=parsed.beds.map((b:Partial<BedState>,i:number)=>normaliseBed(b,i));
-    if (parsed.layers) {
-      state.showPlanted=parsed.layers.showPlanted ?? true;
-      state.showPlanned=parsed.layers.showPlanned ?? true;
+    state.plants=imported.plants;
+    state.beds=imported.beds;
+    if (imported.layers) {
+      state.showPlanted=imported.layers.showPlanted ?? true;
+      state.showPlanned=imported.layers.showPlanned ?? true;
     }
-    if (parsed.simulation) {
-      state.growthYear=clamp(Number(parsed.simulation.growthYear)||3,1,5);
-      state.currentMonth=clamp(Number(parsed.simulation.currentMonth)||0,0,12);
+    if (imported.simulation) {
+      state.growthYear=clamp(Number(imported.simulation.growthYear ?? imported.simulation.growth ?? 3)||3,1,5);
+      state.currentMonth=clamp(Number(imported.simulation.currentMonth ?? imported.simulation.month ?? 0)||0,0,12);
       const growth=q<HTMLInputElement>('[data-growth-year]');
       if (growth) growth.value=String(state.growthYear);
       q('[data-growth-label]')!.textContent=`rok ${state.growthYear}/5`;
@@ -1790,12 +1969,12 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     multiSelectedIds.clear();
     paintSourceId=null;
     paintMode=false;
-    state.selected=state.beds[0] ? {type:'bed',id:state.beds[0].id} : null;
+    state.selected=state.beds[0] ? {type:'bed',id:state.beds[0].id} : state.plants[0] ? {type:'plant',id:state.plants[0].id} : null;
     syncScene();
     scheduleSave();
     const badge=q('[data-save-badge]');
-    if (badge) badge.textContent='zaimportowano';
-  } catch {
+    if (badge) badge.textContent=imported.source==='mobile' ? 'zaimportowano backup mobile' : 'zaimportowano projekt';
+  } catch (error) {
     const badge=q('[data-save-badge]');
     if (badge) badge.textContent='błąd importu';
   } finally {
