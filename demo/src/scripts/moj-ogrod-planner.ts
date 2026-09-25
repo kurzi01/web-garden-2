@@ -436,8 +436,12 @@ const scheduleSave = () => {
   if (badge) badge.textContent = 'zapisywanie…';
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    if (badge) badge.textContent = 'zapisano';
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (badge) badge.textContent = 'zapisano';
+    } catch {
+      if (badge) badge.textContent = 'limit pamięci — usuń część zdjęć';
+    }
   }, 180);
 };
 
@@ -1184,6 +1188,80 @@ const updatePlantRequirements = (plant?:PlantState, bed?:BedState) => {
   }
 };
 
+const todayIso=()=>new Date().toISOString().slice(0,10);
+
+const renderPlantHistory=(plant?:PlantState)=>{
+  const panel=q<HTMLElement>('[data-plant-history]');
+  const list=q<HTMLElement>('[data-history-list]');
+  const grid=q<HTMLElement>('[data-photo-grid]');
+  const counter=q('[data-history-count]');
+  const dateInput=q<HTMLInputElement>('[data-history-date]');
+  if (panel) panel.hidden=!plant;
+  if (!plant) {
+    if (list) list.innerHTML='';
+    if (grid) grid.innerHTML='';
+    return;
+  }
+  if (dateInput && !dateInput.value) dateInput.value=todayIso();
+
+  const events=state.careEvents
+    .filter(event=>event.plantId===plant.id)
+    .sort((a,b)=>b.date.localeCompare(a.date));
+  const photos=state.photos
+    .filter(photo=>photo.plantId===plant.id)
+    .sort((a,b)=>b.date.localeCompare(a.date));
+
+  if (counter) counter.textContent=`${events.length} wpisów · ${photos.length} zdjęć`;
+
+  if (list) {
+    list.innerHTML=events.length
+      ? events.map(event=>`
+          <article class="history-item">
+            <div>
+              <strong>${escapeHtml(careEventLabels[event.type] || event.type)}</strong>
+              <span>${escapeHtml(event.date)}</span>
+            </div>
+            <p>${escapeHtml(event.note || 'bez dodatkowej notatki')}</p>
+            <button class="icon-btn history-delete" data-delete-history="${event.id}" title="Usuń wpis">×</button>
+          </article>`
+        ).join('')
+      : '<div class="history-empty">Brak wpisów w historii tej rośliny.</div>';
+  }
+
+  if (grid) {
+    grid.innerHTML=photos.length
+      ? photos.map(photo=>`
+          <figure class="plant-photo">
+            <img src="${photo.dataUrl}" alt="${escapeHtml(photo.name || plant.name)}" />
+            <figcaption><span>${escapeHtml(photo.date)}</span><button data-delete-photo="${photo.id}" title="Usuń zdjęcie">×</button></figcaption>
+          </figure>`
+        ).join('')
+      : '';
+  }
+};
+
+const compressPhoto=(file:File)=>new Promise<string>((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onerror=()=>reject(reader.error);
+  reader.onload=()=>{
+    const image=new Image();
+    image.onerror=()=>reject(new Error('Nie udało się odczytać zdjęcia'));
+    image.onload=()=>{
+      const maxSide=900;
+      const scale=Math.min(1,maxSide/Math.max(image.naturalWidth,image.naturalHeight));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));
+      canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+      const ctx=canvas.getContext('2d');
+      if (!ctx) return reject(new Error('Brak canvas'));
+      ctx.drawImage(image,0,0,canvas.width,canvas.height);
+      resolve(canvas.toDataURL('image/jpeg',.72));
+    };
+    image.src=String(reader.result);
+  };
+  reader.readAsDataURL(file);
+});
+
 const getSelectedPlants = () => {
   const ids = multiSelectedIds.size
     ? [...multiSelectedIds]
@@ -1323,6 +1401,7 @@ const renderSelection = () => {
   }
 
   updatePlantRequirements(plant,bed);
+  renderPlantHistory(plant);
   updateSiteControls(element ? undefined : bed);
   updateBedAnalytics(bed);
   renderAnalysis();
@@ -1778,6 +1857,83 @@ q('[data-redo]')?.addEventListener('click',redo);
 
 
 
+
+q('[data-add-history]')?.addEventListener('click',()=>{
+  if (state.selected?.type!=='plant') return;
+  const plant=state.plants.find(item=>item.id===state.selected?.id);
+  if (!plant) return;
+  const date=q<HTMLInputElement>('[data-history-date]')?.value || todayIso();
+  const type=(q<HTMLSelectElement>('[data-history-type]')?.value || 'note') as CareEventType;
+  const note=q<HTMLTextAreaElement>('[data-history-note]')?.value.trim() || '';
+  pushHistory();
+  state.careEvents.push({
+    id:`care-${Date.now()}`,
+    plantId:plant.id,
+    type,
+    date,
+    note,
+  });
+  const noteInput=q<HTMLTextAreaElement>('[data-history-note]');
+  if (noteInput) noteInput.value='';
+  renderPlantHistory(plant);
+  scheduleSave();
+});
+
+q('[data-add-photo]')?.addEventListener('click',()=>q<HTMLInputElement>('[data-photo-input]')?.click());
+q<HTMLInputElement>('[data-photo-input]')?.addEventListener('change',async e=>{
+  const input=e.currentTarget as HTMLInputElement;
+  const file=input.files?.[0];
+  if (!file || state.selected?.type!=='plant') return;
+  const plant=state.plants.find(item=>item.id===state.selected?.id);
+  if (!plant) return;
+  const existing=state.photos.filter(photo=>photo.plantId===plant.id);
+  if (existing.length>=6) {
+    const badge=q('[data-save-badge]');
+    if (badge) badge.textContent='limit 6 zdjęć / roślinę w wersji lokalnej';
+    input.value='';
+    return;
+  }
+  try {
+    const dataUrl=await compressPhoto(file);
+    pushHistory();
+    state.photos.push({
+      id:`photo-${Date.now()}`,
+      plantId:plant.id,
+      date:todayIso(),
+      name:file.name,
+      dataUrl,
+    });
+    renderPlantHistory(plant);
+    scheduleSave();
+  } catch {
+    const badge=q('[data-save-badge]');
+    if (badge) badge.textContent='nie udało się dodać zdjęcia';
+  } finally {
+    input.value='';
+  }
+});
+
+document.addEventListener('click',event=>{
+  const target=event.target as HTMLElement;
+  const deleteHistory=target.closest<HTMLElement>('[data-delete-history]');
+  if (deleteHistory?.dataset.deleteHistory) {
+    pushHistory();
+    state.careEvents=state.careEvents.filter(item=>item.id!==deleteHistory.dataset.deleteHistory);
+    const plant=state.selected?.type==='plant' ? state.plants.find(item=>item.id===state.selected?.id) : undefined;
+    renderPlantHistory(plant);
+    scheduleSave();
+    return;
+  }
+  const deletePhoto=target.closest<HTMLElement>('[data-delete-photo]');
+  if (deletePhoto?.dataset.deletePhoto) {
+    pushHistory();
+    state.photos=state.photos.filter(item=>item.id!==deletePhoto.dataset.deletePhoto);
+    const plant=state.selected?.type==='plant' ? state.plants.find(item=>item.id===state.selected?.id) : undefined;
+    renderPlantHistory(plant);
+    scheduleSave();
+  }
+});
+
 q('[data-focus-context]')?.addEventListener('click',focusContextBed);
 
 q('[data-boundary-mode]')?.addEventListener('click',()=>{
@@ -2088,6 +2244,8 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   state.beds=clone(initialBeds);
   state.elements=[];
   state.boundary=clone(defaultBoundary);
+  state.careEvents=[];
+  state.photos=[];
   state.selected={type:'plant',id:'p1'};
   multiSelectedIds.clear();
   multiSelectedIds.add('p1');
@@ -2129,6 +2287,8 @@ const projectPayload=()=>({
   beds:state.beds,
   elements:state.elements,
   boundary:state.boundary,
+  careEvents:state.careEvents,
+  photos:state.photos,
   simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
   layers:{showPlanted:state.showPlanted,showPlanned:state.showPlanned},
 });
@@ -2230,6 +2390,8 @@ const adaptImportedBackup=(parsed:any)=>{
       beds:Array.isArray(parsed.beds) ? parsed.beds.map((bed:Partial<BedState>,i:number)=>normaliseBed(bed,i)) : clone(initialBeds),
       elements:Array.isArray(parsed.elements) ? parsed.elements.map((item:Partial<GardenElementState>,i:number)=>normaliseElement(item,i)) : [],
       boundary:Array.isArray(parsed.boundary) && parsed.boundary.length>=3 ? parsed.boundary : clone(defaultBoundary),
+      careEvents:Array.isArray(parsed.careEvents) ? parsed.careEvents : [],
+      photos:Array.isArray(parsed.photos) ? parsed.photos : [],
       simulation:parsed.simulation,
       layers:parsed.layers,
       gardenWidthM:parsed.project?.gardenWidthM ?? parsed.gardenWidthM,
@@ -2255,6 +2417,8 @@ const adaptImportedBackup=(parsed:any)=>{
     parsed?.boundary,parsed?.outline,root?.boundary,root?.outline,
     parsed?.garden?.boundary,parsed?.project?.boundary,
   );
+  const rawCareEvents=firstArray(parsed?.careEvents,parsed?.history,root?.careEvents,root?.history) || [];
+  const rawPhotos=firstArray(parsed?.photos,root?.photos,parsed?.garden?.photos,parsed?.project?.photos) || [];
 
   if (!rawPlants?.length) throw new Error('Brak roślin w backupie');
 
@@ -2332,6 +2496,20 @@ const adaptImportedBackup=(parsed:any)=>{
     boundary:rawBoundary?.length>=3
       ? rawBoundary.map((point:any)=>({x:clamp(Number(point.x ?? point.lng ?? point[0])||0,0,100),y:clamp(Number(point.y ?? point.lat ?? point[1])||0,0,100)}))
       : clone(defaultBoundary),
+    careEvents:rawCareEvents.map((item:any,index:number)=>({
+      id:String(item.id ?? item.uuid ?? `care-mobile-${index}`),
+      plantId:String(item.plantId ?? item.plantInstanceId ?? item.instanceId ?? ''),
+      type:(['planting','watering','fertilizing','pruning','health','note'].includes(String(item.type)) ? item.type : 'note') as CareEventType,
+      date:String(item.date ?? item.createdAt ?? todayIso()).slice(0,10),
+      note:String(item.note ?? item.description ?? item.text ?? ''),
+    })).filter((item:CareEventState)=>item.plantId),
+    photos:rawPhotos.map((item:any,index:number)=>({
+      id:String(item.id ?? item.uuid ?? `photo-mobile-${index}`),
+      plantId:String(item.plantId ?? item.plantInstanceId ?? ''),
+      date:String(item.date ?? item.createdAt ?? todayIso()).slice(0,10),
+      name:String(item.name ?? item.filename ?? 'zdjęcie'),
+      dataUrl:String(item.dataUrl ?? item.base64 ?? ''),
+    })).filter((item:PlantPhotoState)=>item.plantId && item.dataUrl),
     simulation:parsed?.simulation || root?.simulation,
     layers:parsed?.layers || root?.layers,
     gardenWidthM:parsed?.gardenWidthM ?? root?.gardenWidthM ?? root?.widthMeters ?? root?.widthM,
@@ -2377,6 +2555,8 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     state.beds=imported.beds;
     state.elements=Array.isArray(imported.elements) ? imported.elements : [];
     state.boundary=Array.isArray(imported.boundary) && imported.boundary.length>=3 ? clone(imported.boundary) : clone(defaultBoundary);
+    state.careEvents=Array.isArray(imported.careEvents) ? clone(imported.careEvents) : [];
+    state.photos=Array.isArray(imported.photos) ? clone(imported.photos) : [];
     renderBoundary();
     state.gardenWidthM=clamp(Number(imported.gardenWidthM)||20,2,200);
     const gardenWidth=q<HTMLInputElement>('[data-garden-width]');
@@ -2426,6 +2606,8 @@ document.addEventListener('keydown',event=>{
     if (state.selected.type==='plant') {
       const ids=multiSelectedIds.size ? new Set(multiSelectedIds) : new Set([state.selected.id]);
       state.plants=state.plants.filter(x=>!ids.has(x.id));
+      state.careEvents=state.careEvents.filter(event=>!ids.has(event.plantId));
+      state.photos=state.photos.filter(photo=>!ids.has(photo.plantId));
       multiSelectedIds.clear();
       paintSourceId=null;
       paintMode=false;
