@@ -6,6 +6,7 @@ type FrontEdge = 'top' | 'bottom' | 'left' | 'right';
 type PlantStatus = 'planted' | 'planned';
 type GardenElementType = 'path' | 'terrace' | 'water' | 'structure';
 type CareEventType = 'planting' | 'watering' | 'fertilizing' | 'pruning' | 'health' | 'note';
+type TaskType = 'watering' | 'fertilizing' | 'pruning' | 'planting' | 'health' | 'custom';
 type PointState = { x:number; y:number };
 
 type PlantState = {
@@ -67,6 +68,16 @@ type PlantPhotoState = {
   dataUrl:string;
 };
 
+type TaskState = {
+  id:string;
+  title:string;
+  type:TaskType;
+  dueDate:string;
+  plantId:string | null;
+  done:boolean;
+  completedAt?:string;
+};
+
 type PlannerSelection = { type: 'plant' | 'bed' | 'element'; id: string } | null;
 
 type PlannerState = {
@@ -83,6 +94,7 @@ type PlannerState = {
   boundary: PointState[];
   careEvents: CareEventState[];
   photos: PlantPhotoState[];
+  tasks: TaskState[];
   selected: PlannerSelection;
 };
 
@@ -91,8 +103,8 @@ type FitResult = {
   issues: string[];
 };
 
-const STORAGE_KEY = 'moj-ogrod-planner-v9';
-const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v8','moj-ogrod-planner-v7','moj-ogrod-planner-v6','moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
+const STORAGE_KEY = 'moj-ogrod-planner-v10';
+const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v9','moj-ogrod-planner-v8','moj-ogrod-planner-v7','moj-ogrod-planner-v6','moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
 const BUDGET_STORAGE_KEY = 'moj-ogrod-budget-prices-v1';
 const SNAP_STEP = 2;
 const HISTORY_LIMIT = 40;
@@ -114,6 +126,15 @@ const elementLabels:Record<GardenElementType,string>={
   terrace:'Taras',
   water:'Woda',
   structure:'Konstrukcja',
+};
+
+const taskTypeLabels:Record<TaskType,string>={
+  watering:'Podlewanie',
+  fertilizing:'Nawożenie',
+  pruning:'Cięcie',
+  planting:'Sadzenie',
+  health:'Kontrola zdrowia',
+  custom:'Inne',
 };
 
 const careEventLabels:Record<CareEventType,string>={
@@ -187,6 +208,7 @@ const defaultState: PlannerState = {
   boundary:clone(defaultBoundary),
   careEvents:[],
   photos:[],
+  tasks:[],
   selected:{ type:'plant', id:'p1' },
 };
 
@@ -261,6 +283,7 @@ const loadState = (): PlannerState => {
         : clone(defaultBoundary),
       careEvents:Array.isArray(parsed.careEvents) ? parsed.careEvents : [],
       photos:Array.isArray(parsed.photos) ? parsed.photos : [],
+      tasks:Array.isArray(parsed.tasks) ? parsed.tasks : [],
       selected: parsed.selected ?? null,
     };
   } catch {
@@ -452,6 +475,7 @@ const modelSnapshot = () => JSON.stringify({
   boundary:state.boundary,
   careEvents:state.careEvents,
   photos:state.photos,
+  tasks:state.tasks,
   selected:state.selected,
 });
 
@@ -473,13 +497,14 @@ const pushHistory = () => {
 };
 
 const restoreModel = (raw:string) => {
-  const parsed = JSON.parse(raw) as Pick<PlannerState,'plants'|'beds'|'elements'|'boundary'|'careEvents'|'photos'|'selected'>;
+  const parsed = JSON.parse(raw) as Pick<PlannerState,'plants'|'beds'|'elements'|'boundary'|'careEvents'|'photos'|'tasks'|'selected'>;
   state.plants = parsed.plants.map((p,i)=>normalisePlant(p,i));
   state.beds = parsed.beds.map((b,i)=>normaliseBed(b,i));
   state.elements = Array.isArray(parsed.elements) ? parsed.elements.map((item,i)=>normaliseElement(item,i)) : [];
   state.boundary = Array.isArray(parsed.boundary) && parsed.boundary.length>=3 ? clone(parsed.boundary) : clone(defaultBoundary);
   state.careEvents = Array.isArray(parsed.careEvents) ? clone(parsed.careEvents) : [];
   state.photos = Array.isArray(parsed.photos) ? clone(parsed.photos) : [];
+  state.tasks = Array.isArray(parsed.tasks) ? clone(parsed.tasks) : [];
   state.selected = parsed.selected ?? null;
   syncScene();
   scheduleSave();
@@ -1034,17 +1059,74 @@ const renderProjectAnalysisView=()=>{
   `;
 };
 
+
+let taskFilter:'open'|'all'|'done'='open';
+
+const renderCalendarView=()=>{
+  const list=q<HTMLElement>('[data-task-list]');
+  const plantSelect=q<HTMLSelectElement>('[data-task-plant]');
+  const date=q<HTMLInputElement>('[data-task-date]');
+  if (!list || !plantSelect) return;
+
+  if (date && !date.value) date.value=todayIso();
+
+  const currentValue=plantSelect.value;
+  plantSelect.innerHTML='<option value="">Cały ogród</option>'+state.plants
+    .map(plant=>`<option value="${plant.id}">${escapeHtml(plant.name)}</option>`)
+    .join('');
+  if ([...plantSelect.options].some(option=>option.value===currentValue)) plantSelect.value=currentValue;
+
+  const tasks=[...state.tasks]
+    .filter(task=>taskFilter==='all' || (taskFilter==='done' ? task.done : !task.done))
+    .sort((a,b)=>{
+      if (a.done!==b.done) return Number(a.done)-Number(b.done);
+      return a.dueDate.localeCompare(b.dueDate);
+    });
+
+  const today=todayIso();
+  list.innerHTML=tasks.length
+    ? tasks.map(task=>{
+        const plant=task.plantId ? state.plants.find(item=>item.id===task.plantId) : undefined;
+        const overdue=!task.done && task.dueDate < today;
+        return `
+          <article class="task-item ${task.done?'done':''} ${overdue?'overdue':''}">
+            <label class="task-check">
+              <input type="checkbox" data-task-toggle="${task.id}" ${task.done?'checked':''} />
+              <span></span>
+            </label>
+            <div class="task-copy">
+              <div class="task-meta">
+                <span class="badge">${escapeHtml(taskTypeLabels[task.type] || task.type)}</span>
+                <time>${escapeHtml(task.dueDate)}</time>
+                ${overdue?'<strong class="task-overdue">po terminie</strong>':''}
+              </div>
+              <h3>${escapeHtml(task.title)}</h3>
+              <small>${plant ? escapeHtml(plant.name) : 'Cały ogród'}</small>
+            </div>
+            <button class="icon-btn" data-delete-task="${task.id}" title="Usuń zadanie">×</button>
+          </article>`;
+      }).join('')
+    : '<div class="empty-state"><strong>Brak zadań w tym widoku.</strong><span>Dodaj podlewanie, nawożenie, cięcie albo własne zadanie.</span></div>';
+
+  qa<HTMLButtonElement>('[data-task-filter]').forEach(button=>{
+    button.classList.toggle('active-tool',button.dataset.taskFilter===taskFilter);
+  });
+};
+
 const renderMigrationViews=()=>{
   const gardenNav=q('[data-nav-garden-count]');
   const shoppingNav=q('[data-nav-shopping-count]');
+  const taskNav=q('[data-nav-task-count]');
   const elementsNav=q('[data-nav-elements-count]');
   if (gardenNav) gardenNav.textContent=String(state.plants.length);
   if (shoppingNav) shoppingNav.textContent=String(state.plants.filter(plant=>plant.status==='planned').length);
+  if (taskNav) taskNav.textContent=String(state.tasks.filter(task=>!task.done).length);
   if (elementsNav) elementsNav.textContent=String(state.elements.length);
 
   const active=qa<HTMLElement>('[data-workspace-view]').find(panel=>!panel.hidden)?.dataset.workspaceView;
   if (active==='garden') renderGardenView();
   if (active==='shopping') renderShoppingView();
+  if (active==='calendar') renderCalendarView();
   if (active==='studio') renderStudioView();
   if (active==='analysis') renderProjectAnalysisView();
 };
@@ -1941,6 +2023,68 @@ document.addEventListener('click',event=>{
   }
 });
 
+
+q('[data-add-task]')?.addEventListener('click',()=>{
+  const title=q<HTMLInputElement>('[data-task-title]')?.value.trim() || '';
+  if (!title) {
+    const badge=q('[data-save-badge]');
+    if (badge) badge.textContent='wpisz nazwę zadania';
+    return;
+  }
+  const type=(q<HTMLSelectElement>('[data-task-type]')?.value || 'custom') as TaskType;
+  const dueDate=q<HTMLInputElement>('[data-task-date]')?.value || todayIso();
+  const plantId=q<HTMLSelectElement>('[data-task-plant]')?.value || null;
+  pushHistory();
+  state.tasks.push({
+    id:`task-${Date.now()}`,
+    title,
+    type,
+    dueDate,
+    plantId,
+    done:false,
+  });
+  const titleInput=q<HTMLInputElement>('[data-task-title]');
+  if (titleInput) titleInput.value='';
+  renderCalendarView();
+  renderMigrationViews();
+  scheduleSave();
+});
+
+qa<HTMLButtonElement>('[data-task-filter]').forEach(button=>{
+  button.addEventListener('click',()=>{
+    const filter=button.dataset.taskFilter;
+    if (filter==='open'||filter==='all'||filter==='done') taskFilter=filter;
+    renderCalendarView();
+  });
+});
+
+document.addEventListener('change',event=>{
+  const target=event.target as HTMLInputElement;
+  if (target.matches('[data-task-toggle]')) {
+    const id=target.dataset.taskToggle;
+    const task=state.tasks.find(item=>item.id===id);
+    if (!task) return;
+    pushHistory();
+    task.done=target.checked;
+    task.completedAt=target.checked ? new Date().toISOString() : undefined;
+    renderCalendarView();
+    renderMigrationViews();
+    scheduleSave();
+  }
+});
+
+document.addEventListener('click',event=>{
+  const target=event.target as HTMLElement;
+  const deleteTask=target.closest<HTMLElement>('[data-delete-task]');
+  if (deleteTask?.dataset.deleteTask) {
+    pushHistory();
+    state.tasks=state.tasks.filter(task=>task.id!==deleteTask.dataset.deleteTask);
+    renderCalendarView();
+    renderMigrationViews();
+    scheduleSave();
+  }
+});
+
 q('[data-focus-context]')?.addEventListener('click',focusContextBed);
 
 q('[data-boundary-mode]')?.addEventListener('click',()=>{
@@ -2253,6 +2397,7 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   state.boundary=clone(defaultBoundary);
   state.careEvents=[];
   state.photos=[];
+  state.tasks=[];
   state.selected={type:'plant',id:'p1'};
   multiSelectedIds.clear();
   multiSelectedIds.add('p1');
@@ -2287,7 +2432,7 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
 
 const projectPayload=()=>({
   format:'moj-ogrod-planner',
-  version:9,
+  version:10,
   exportedAt:new Date().toISOString(),
   project:{name:'Ogród domowy',location:'Rzeszów',gardenWidthM:state.gardenWidthM},
   plants:state.plants,
@@ -2296,6 +2441,7 @@ const projectPayload=()=>({
   boundary:state.boundary,
   careEvents:state.careEvents,
   photos:state.photos,
+  tasks:state.tasks,
   simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
   layers:{showPlanted:state.showPlanted,showPlanned:state.showPlanned},
 });
@@ -2399,6 +2545,7 @@ const adaptImportedBackup=(parsed:any)=>{
       boundary:Array.isArray(parsed.boundary) && parsed.boundary.length>=3 ? parsed.boundary : clone(defaultBoundary),
       careEvents:Array.isArray(parsed.careEvents) ? parsed.careEvents : [],
       photos:Array.isArray(parsed.photos) ? parsed.photos : [],
+      tasks:Array.isArray(parsed.tasks) ? parsed.tasks : [],
       simulation:parsed.simulation,
       layers:parsed.layers,
       gardenWidthM:parsed.project?.gardenWidthM ?? parsed.gardenWidthM,
@@ -2426,6 +2573,7 @@ const adaptImportedBackup=(parsed:any)=>{
   );
   const rawCareEvents=firstArray(parsed?.careEvents,parsed?.history,root?.careEvents,root?.history) || [];
   const rawPhotos=firstArray(parsed?.photos,root?.photos,parsed?.garden?.photos,parsed?.project?.photos) || [];
+  const rawTasks=firstArray(parsed?.tasks,root?.tasks,parsed?.garden?.tasks,parsed?.project?.tasks) || [];
 
   if (!rawPlants?.length) throw new Error('Brak roślin w backupie');
 
@@ -2517,6 +2665,15 @@ const adaptImportedBackup=(parsed:any)=>{
       name:String(item.name ?? item.filename ?? 'zdjęcie'),
       dataUrl:String(item.dataUrl ?? item.base64 ?? ''),
     })).filter((item:PlantPhotoState)=>item.plantId && item.dataUrl),
+    tasks:rawTasks.map((item:any,index:number)=>({
+      id:String(item.id ?? item.uuid ?? `task-mobile-${index}`),
+      title:String(item.title ?? item.name ?? item.description ?? 'Zadanie'),
+      type:(['watering','fertilizing','pruning','planting','health','custom'].includes(String(item.type)) ? item.type : 'custom') as TaskType,
+      dueDate:String(item.dueDate ?? item.date ?? item.scheduledFor ?? todayIso()).slice(0,10),
+      plantId:item.plantId ?? item.plantInstanceId ?? null,
+      done:Boolean(item.done ?? item.completed ?? item.isDone),
+      completedAt:item.completedAt,
+    })),
     simulation:parsed?.simulation || root?.simulation,
     layers:parsed?.layers || root?.layers,
     gardenWidthM:parsed?.gardenWidthM ?? root?.gardenWidthM ?? root?.widthMeters ?? root?.widthM,
@@ -2564,6 +2721,7 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     state.boundary=Array.isArray(imported.boundary) && imported.boundary.length>=3 ? clone(imported.boundary) : clone(defaultBoundary);
     state.careEvents=Array.isArray(imported.careEvents) ? clone(imported.careEvents) : [];
     state.photos=Array.isArray(imported.photos) ? clone(imported.photos) : [];
+    state.tasks=Array.isArray(imported.tasks) ? clone(imported.tasks) : [];
     renderBoundary();
     state.gardenWidthM=clamp(Number(imported.gardenWidthM)||20,2,200);
     const gardenWidth=q<HTMLInputElement>('[data-garden-width]');
@@ -2615,6 +2773,7 @@ document.addEventListener('keydown',event=>{
       state.plants=state.plants.filter(x=>!ids.has(x.id));
       state.careEvents=state.careEvents.filter(event=>!ids.has(event.plantId));
       state.photos=state.photos.filter(photo=>!ids.has(photo.plantId));
+      state.tasks=state.tasks.filter(task=>!task.plantId || !ids.has(task.plantId));
       multiSelectedIds.clear();
       paintSourceId=null;
       paintMode=false;
