@@ -637,6 +637,8 @@ scene.addEventListener('pointerdown', event => {
 
   const bedEl = target.closest<HTMLElement>('[data-bed-id]');
   if (bedEl?.dataset.bedId) {
+    const b=state.beds.find(x=>x.id===bedEl.dataset.bedId);
+    if (!b) return;
     const rect=bedEl.getBoundingClientRect();
     pushHistory();
     interaction={
