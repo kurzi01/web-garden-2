@@ -540,6 +540,8 @@ const renderAnalysis = () => {
     const blooming=state.currentMonth>0 && p.bloomMonths.includes(state.currentMonth);
     el.classList.toggle('blooming', blooming);
     el.classList.toggle('season-muted', state.currentMonth>0 && !blooming && !p.evergreen);
+    el.classList.toggle('plant-planted',p.status==='planted');
+    el.classList.toggle('plant-planned',p.status==='planned');
     el.classList.toggle('layer-hidden',
       (p.status==='planted' && !state.showPlanted) ||
       (p.status==='planned' && !state.showPlanned)
@@ -849,10 +851,16 @@ const renderProjectAnalysisView=()=>{
 };
 
 const renderMigrationViews=()=>{
-  renderGardenView();
-  renderShoppingView();
-  renderStudioView();
-  renderProjectAnalysisView();
+  const gardenNav=q('[data-nav-garden-count]');
+  const shoppingNav=q('[data-nav-shopping-count]');
+  if (gardenNav) gardenNav.textContent=String(state.plants.length);
+  if (shoppingNav) shoppingNav.textContent=String(state.plants.filter(plant=>plant.status==='planned').length);
+
+  const active=qa<HTMLElement>('[data-workspace-view]').find(panel=>!panel.hidden)?.dataset.workspaceView;
+  if (active==='garden') renderGardenView();
+  if (active==='shopping') renderShoppingView();
+  if (active==='studio') renderStudioView();
+  if (active==='analysis') renderProjectAnalysisView();
 };
 
 const openWorkspaceView=(view:string)=>{
@@ -863,6 +871,7 @@ const openWorkspaceView=(view:string)=>{
     const plannerButton=q<HTMLElement>('[data-open-view="planner"]');
     plannerButton?.classList.add('active');
   }
+  renderMigrationViews();
 };
 
 const updateComposition = (bed?:BedState) => {
@@ -1174,6 +1183,7 @@ const createOddGroup = (count:3|5|7) => {
       id:`p-group-${Date.now()}-${i}`,
       x:fitted[i].x,
       y:fitted[i].y,
+      status:'planned',
     };
     state.plants.push(clonePlant);
     multiSelectedIds.add(clonePlant.id);
@@ -1227,6 +1237,7 @@ const duplicateSelection = () => {
       id:`p-dup-${Date.now()}-${index}`,
       x:snap(plant.x+offset.x),
       y:snap(plant.y+offset.y),
+      status:'planned',
     };
     state.plants.push(next);
     multiSelectedIds.add(next.id);
@@ -1264,6 +1275,7 @@ const paintPlantAt = (clientX:number,clientY:number) => {
     ...clone(source),
     id:`p-paint-${Date.now()}-${paintSequence}`,
     x,y,
+    status:'planned',
   };
   state.plants.push(next);
   lastPaintPoint={x,y};
