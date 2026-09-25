@@ -5,6 +5,7 @@ type SoilPh = 'acid' | 'neutral' | 'alkaline';
 type FrontEdge = 'top' | 'bottom' | 'left' | 'right';
 type PlantStatus = 'planted' | 'planned';
 type GardenElementType = 'path' | 'terrace' | 'water' | 'structure';
+type PointState = { x:number; y:number };
 
 type PlantState = {
   id: string;
@@ -62,6 +63,7 @@ type PlannerState = {
   plants: PlantState[];
   beds: BedState[];
   elements: GardenElementState[];
+  boundary: PointState[];
   selected: Selection;
 };
 
@@ -70,8 +72,8 @@ type FitResult = {
   issues: string[];
 };
 
-const STORAGE_KEY = 'moj-ogrod-planner-v7';
-const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v6','moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
+const STORAGE_KEY = 'moj-ogrod-planner-v8';
+const LEGACY_STORAGE_KEYS = ['moj-ogrod-planner-v7','moj-ogrod-planner-v6','moj-ogrod-planner-v5','moj-ogrod-planner-v4','moj-ogrod-planner-v3'];
 const BUDGET_STORAGE_KEY = 'moj-ogrod-budget-prices-v1';
 const SNAP_STEP = 2;
 const HISTORY_LIMIT = 40;
@@ -138,6 +140,11 @@ const initialBeds: BedState[] = [
   { id:'b3', name:'Rabata przy tarasie', x:24, y:65, width:44, height:20, sun:'partial', moisture:'moist', ph:'neutral', frontEdge:'bottom' },
 ];
 
+const defaultBoundary:PointState[]=[
+  {x:8,y:12},{x:76,y:8},{x:91,y:20},{x:93,y:70},
+  {x:79,y:87},{x:20,y:89},{x:7,y:73},{x:6,y:29},
+];
+
 const defaultState: PlannerState = {
   zoom:1,
   snap:true,
@@ -149,6 +156,7 @@ const defaultState: PlannerState = {
   plants:clone(initialPlants),
   beds:clone(initialBeds),
   elements:[],
+  boundary:clone(defaultBoundary),
   selected:{ type:'plant', id:'p1' },
 };
 
@@ -218,6 +226,9 @@ const loadState = (): PlannerState => {
       plants: Array.isArray(parsed.plants) ? parsed.plants.map((p,i)=>normalisePlant(p,i)) : clone(initialPlants),
       beds: Array.isArray(parsed.beds) ? parsed.beds.map((b,i)=>normaliseBed(b,i)) : clone(initialBeds),
       elements: Array.isArray(parsed.elements) ? parsed.elements.map((item,i)=>normaliseElement(item,i)) : [],
+      boundary:Array.isArray(parsed.boundary) && parsed.boundary.length>=3
+        ? parsed.boundary.map(point=>({x:clamp(Number(point.x)||0,0,100),y:clamp(Number(point.y)||0,0,100)}))
+        : clone(defaultBoundary),
       selected: parsed.selected ?? null,
     };
   } catch {
@@ -264,6 +275,8 @@ let paintSequence = 0;
 let measureMode=false;
 let measureStart:{x:number;y:number}|null=null;
 let measurement:{start:{x:number;y:number};end:{x:number;y:number}}|null=null;
+let boundaryMode=false;
+let boundaryDragIndex:number|null=null;
 
 const snap = (v:number) => state.snap ? Math.round(v / SNAP_STEP) * SNAP_STEP : v;
 const growthFactors = [0,.35,.55,.72,.86,1];
@@ -316,6 +329,32 @@ const bloomContinuity = (bed:BedState) => {
   };
 };
 
+const boundaryBounds=()=>{
+  const xs=state.boundary.map(point=>point.x);
+  const ys=state.boundary.map(point=>point.y);
+  return {
+    minX:Math.min(...xs),maxX:Math.max(...xs),
+    minY:Math.min(...ys),maxY:Math.max(...ys),
+  };
+};
+
+const renderBoundary=()=>{
+  const polygon=q<SVGPolygonElement>('[data-boundary-polygon]');
+  const handles=q<HTMLElement>('[data-boundary-handles]');
+  if (polygon) polygon.setAttribute('points',state.boundary.map(point=>`${point.x},${point.y}`).join(' '));
+  if (handles) {
+    handles.innerHTML=boundaryMode
+      ? state.boundary.map((point,index)=>`<button class="boundary-handle" data-boundary-index="${index}" style="left:${point.x}%;top:${point.y}%" aria-label="Punkt obrysu ${index+1}"></button>`).join('')
+      : '';
+  }
+  const button=q<HTMLButtonElement>('[data-boundary-mode]');
+  if (button) {
+    button.classList.toggle('active-tool',boundaryMode);
+    button.textContent=boundaryMode ? 'Obrys: edycja' : 'Edytuj obrys';
+  }
+  scene.classList.toggle('boundary-edit-mode',boundaryMode);
+};
+
 const renderMeasurement=()=>{
   const layer=q<HTMLElement>('[data-measure-layer]');
   if (!layer) return;
@@ -327,8 +366,9 @@ const renderMeasurement=()=>{
   const rect=scene.getBoundingClientRect();
   const dxPx=((end.x-start.x)/100)*rect.width;
   const dyPx=((end.y-start.y)/100)*rect.height;
-  const boundaryWidthPx=rect.width*.84;
-  const meters=Math.hypot(dxPx,dyPx)/(boundaryWidthPx/state.gardenWidthM);
+  const bounds=boundaryBounds();
+  const boundaryWidthPx=rect.width*((bounds.maxX-bounds.minX)/100);
+  const meters=Math.hypot(dxPx,dyPx)/(Math.max(1,boundaryWidthPx)/state.gardenWidthM);
   const midX=(start.x+end.x)/2;
   const midY=(start.y+end.y)/2;
   layer.innerHTML=`
@@ -373,6 +413,7 @@ const modelSnapshot = () => JSON.stringify({
   plants:state.plants,
   beds:state.beds,
   elements:state.elements,
+  boundary:state.boundary,
   selected:state.selected,
 });
 
@@ -394,10 +435,11 @@ const pushHistory = () => {
 };
 
 const restoreModel = (raw:string) => {
-  const parsed = JSON.parse(raw) as Pick<PlannerState,'plants'|'beds'|'elements'|'selected'>;
+  const parsed = JSON.parse(raw) as Pick<PlannerState,'plants'|'beds'|'elements'|'boundary'|'selected'>;
   state.plants = parsed.plants.map((p,i)=>normalisePlant(p,i));
   state.beds = parsed.beds.map((b,i)=>normaliseBed(b,i));
   state.elements = Array.isArray(parsed.elements) ? parsed.elements.map((item,i)=>normaliseElement(item,i)) : [];
+  state.boundary = Array.isArray(parsed.boundary) && parsed.boundary.length>=3 ? clone(parsed.boundary) : clone(defaultBoundary);
   state.selected = parsed.selected ?? null;
   syncScene();
   scheduleSave();
@@ -1423,6 +1465,16 @@ const syncScene = () => {
 scene.addEventListener('pointerdown', event => {
   const target = event.target as HTMLElement;
 
+  const boundaryHandle=target.closest<HTMLElement>('[data-boundary-index]');
+  if (boundaryMode && boundaryHandle?.dataset.boundaryIndex) {
+    const index=Number(boundaryHandle.dataset.boundaryIndex);
+    if (!Number.isInteger(index) || !state.boundary[index]) return;
+    pushHistory();
+    boundaryDragIndex=index;
+    boundaryHandle.setPointerCapture(event.pointerId);
+    return;
+  }
+
   if (measureMode) {
     event.preventDefault();
     const rect=scene.getBoundingClientRect();
@@ -1571,6 +1623,17 @@ scene.addEventListener('pointerdown', event => {
 });
 
 scene.addEventListener('pointermove', event => {
+  if (boundaryDragIndex!==null) {
+    const rect=scene.getBoundingClientRect();
+    state.boundary[boundaryDragIndex]={
+      x:clamp(snap(((event.clientX-rect.left)/rect.width)*100),1,99),
+      y:clamp(snap(((event.clientY-rect.top)/rect.height)*100),1,99),
+    };
+    renderBoundary();
+    renderMeasurement();
+    scheduleSave();
+    return;
+  }
   if (paintStroke) {
     paintPlantAt(event.clientX,event.clientY);
     return;
@@ -1650,6 +1713,7 @@ scene.addEventListener('pointermove', event => {
 const stopInteraction=()=>{
   document.querySelectorAll('.dragging').forEach(el=>el.classList.remove('dragging'));
   interaction=null;
+  boundaryDragIndex=null;
   paintStroke=false;
   lastPaintPoint=null;
 };
@@ -1680,11 +1744,25 @@ q('[data-redo]')?.addEventListener('click',redo);
 
 q('[data-focus-context]')?.addEventListener('click',focusContextBed);
 
+q('[data-boundary-mode]')?.addEventListener('click',()=>{
+  boundaryMode=!boundaryMode;
+  boundaryDragIndex=null;
+  if (boundaryMode) {
+    measureMode=false;
+    paintMode=false;
+    updateMeasureUi();
+    updateDesignerTools();
+  }
+  renderBoundary();
+});
+
 q('[data-measure]')?.addEventListener('click',()=>{
   measureMode=!measureMode;
   measureStart=null;
   if (measureMode) {
+    boundaryMode=false;
     paintMode=false;
+    renderBoundary();
     updateDesignerTools();
   }
   updateMeasureUi();
@@ -1973,6 +2051,7 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   state.plants=clone(initialPlants);
   state.beds=clone(initialBeds);
   state.elements=[];
+  state.boundary=clone(defaultBoundary);
   state.selected={type:'plant',id:'p1'};
   multiSelectedIds.clear();
   multiSelectedIds.add('p1');
@@ -1985,6 +2064,8 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   state.currentMonth=0;
   state.gardenWidthM=20;
   measureMode=false;
+  boundaryMode=false;
+  boundaryDragIndex=null;
   measureStart=null;
   measurement=null;
   syncScene();
@@ -1995,6 +2076,7 @@ q('[data-reset-project]')?.addEventListener('click',()=>{
   if (growth) growth.value='3';
   const gardenWidth=q<HTMLInputElement>('[data-garden-width]');
   if (gardenWidth) gardenWidth.value='20';
+  renderBoundary();
   renderMeasurement();
   updateMeasureUi();
   q('[data-growth-label]')!.textContent='rok 3/5';
@@ -2010,6 +2092,7 @@ const projectPayload=()=>({
   plants:state.plants,
   beds:state.beds,
   elements:state.elements,
+  boundary:state.boundary,
   simulation:{growthYear:state.growthYear,currentMonth:state.currentMonth},
   layers:{showPlanted:state.showPlanted,showPlanned:state.showPlanned},
 });
@@ -2110,6 +2193,7 @@ const adaptImportedBackup=(parsed:any)=>{
       plants:parsed.plants.map((plant:Partial<PlantState>,i:number)=>normalisePlant(plant,i)),
       beds:Array.isArray(parsed.beds) ? parsed.beds.map((bed:Partial<BedState>,i:number)=>normaliseBed(bed,i)) : clone(initialBeds),
       elements:Array.isArray(parsed.elements) ? parsed.elements.map((item:Partial<GardenElementState>,i:number)=>normaliseElement(item,i)) : [],
+      boundary:Array.isArray(parsed.boundary) && parsed.boundary.length>=3 ? parsed.boundary : clone(defaultBoundary),
       simulation:parsed.simulation,
       layers:parsed.layers,
       gardenWidthM:parsed.project?.gardenWidthM ?? parsed.gardenWidthM,
@@ -2130,6 +2214,10 @@ const adaptImportedBackup=(parsed:any)=>{
   const rawElements=firstArray(
     parsed?.gardenElements,parsed?.elements,root?.gardenElements,root?.elements,
     parsed?.garden?.elements,parsed?.project?.elements,
+  );
+  const rawBoundary=firstArray(
+    parsed?.boundary,parsed?.outline,root?.boundary,root?.outline,
+    parsed?.garden?.boundary,parsed?.project?.boundary,
   );
 
   if (!rawPlants?.length) throw new Error('Brak roślin w backupie');
@@ -2205,6 +2293,9 @@ const adaptImportedBackup=(parsed:any)=>{
     plants,
     beds,
     elements,
+    boundary:rawBoundary?.length>=3
+      ? rawBoundary.map((point:any)=>({x:clamp(Number(point.x ?? point.lng ?? point[0])||0,0,100),y:clamp(Number(point.y ?? point.lat ?? point[1])||0,0,100)}))
+      : clone(defaultBoundary),
     simulation:parsed?.simulation || root?.simulation,
     layers:parsed?.layers || root?.layers,
     gardenWidthM:parsed?.gardenWidthM ?? root?.gardenWidthM ?? root?.widthMeters ?? root?.widthM,
@@ -2249,6 +2340,8 @@ q<HTMLInputElement>('[data-import-input]')?.addEventListener('change',async e=>{
     state.plants=imported.plants;
     state.beds=imported.beds;
     state.elements=Array.isArray(imported.elements) ? imported.elements : [];
+    state.boundary=Array.isArray(imported.boundary) && imported.boundary.length>=3 ? clone(imported.boundary) : clone(defaultBoundary);
+    renderBoundary();
     state.gardenWidthM=clamp(Number(imported.gardenWidthM)||20,2,200);
     const gardenWidth=q<HTMLInputElement>('[data-garden-width]');
     if (gardenWidth) gardenWidth.value=String(state.gardenWidthM);
@@ -2325,6 +2418,7 @@ if (state.selected?.type==='plant') {
 }
 updateHistoryButtons();
 syncScene();
+renderBoundary();
 renderMeasurement();
 updateMeasureUi();
 setZoom(state.zoom);
