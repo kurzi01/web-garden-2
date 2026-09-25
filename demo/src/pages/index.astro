@@ -12,14 +12,14 @@ const nav = [
 ];
 
 const libraryPlants = [
-  ['Hortensja bukietowa', 'Hydrangea paniculata', '90 cm', 'H'],
-  ['Sosna bośniacka Compact Gem', 'Pinus heldreichii', '120 cm', 'S'],
-  ['Paproć ogrodowa', 'Dryopteris', '55 cm', 'P'],
-  ['Hakonechloa smukła', 'Hakonechloa macra', '50 cm', 'Ha'],
-  ['Żurawka', 'Heuchera', '35 cm', 'Ż'],
-  ['Funkia', 'Hosta', '60 cm', 'F'],
-  ['Rozplenica japońska', 'Pennisetum alopecuroides', '70 cm', 'R'],
-  ['Tawułka Arendsa', 'Astilbe × arendsii', '45 cm', 'T'],
+  ['Hortensja bukietowa', 'Hydrangea paniculata', '90', '180', 'H', 'summer,autumn'],
+  ['Sosna bośniacka Compact Gem', 'Pinus heldreichii', '120', '120', 'S', 'spring,summer,autumn,winter'],
+  ['Paproć ogrodowa', 'Dryopteris', '55', '70', 'P', 'spring,summer,autumn'],
+  ['Hakonechloa smukła', 'Hakonechloa macra', '50', '45', 'Ha', 'summer,autumn'],
+  ['Żurawka', 'Heuchera', '35', '30', 'Ż', 'spring,summer,autumn,winter'],
+  ['Funkia', 'Hosta', '60', '55', 'F', 'spring,summer,autumn'],
+  ['Rozplenica japońska', 'Pennisetum alopecuroides', '70', '90', 'R', 'summer,autumn,winter'],
+  ['Tawułka Arendsa', 'Astilbe × arendsii', '45', '70', 'T', 'summer'],
 ];
 ---
 
@@ -37,13 +37,11 @@ const libraryPlants = [
           <div class="brand-mark">MO</div>
           <div class="brand-copy"><strong>Mój Ogród</strong><span>Planner Pro</span></div>
         </div>
-
         <div class="project-title">
           <span class="status-dot"></span>
           <strong>Ogród domowy · Rzeszów</strong>
           <span class="badge" data-save-badge>zapisano</span>
         </div>
-
         <div class="top-actions">
           <button class="icon-btn" title="Przywróć projekt" data-reset-project>↺</button>
           <button class="ghost-btn">Import z mobile</button>
@@ -71,20 +69,22 @@ const libraryPlants = [
             <input type="search" placeholder="Szukaj rośliny…" data-library-search />
           </label>
 
-          <div class="plant-library" data-plant-library>
-            {libraryPlants.map(([name, latin, spacing, short]) => (
+          <div class="plant-library">
+            {libraryPlants.map(([name, latin, spacing, height, short, seasons]) => (
               <button
                 class="library-item"
                 data-library-item
                 data-library-name={name}
                 data-library-latin={latin}
-                data-library-spacing={spacing.replace(' cm','')}
+                data-library-spacing={spacing}
+                data-library-height={height}
                 data-library-short={short}
+                data-library-seasons={seasons}
               >
                 <span class="library-avatar">{short}</span>
                 <span class="library-copy">
                   <strong>{name}</strong>
-                  <small>{latin} · {spacing}</small>
+                  <small>{latin} · {spacing} cm · {height} cm</small>
                 </span>
                 <span class="library-add">＋</span>
               </button>
@@ -93,7 +93,7 @@ const libraryPlants = [
 
           <div class="section-kicker">Warstwy</div>
           <button class="nav-item"><span>Rośliny posadzone</span><small>✓</small></button>
-          <button class="nav-item"><span>Rośliny planowane</span><small>✓</small></button>
+          <button class="nav-item"><span>Rośliny poza rabatą</span><small data-outside-count>0</small></button>
           <button class="nav-item"><span>Rozstaw i kolizje</span><small data-layer-collision>✓</small></button>
           <button class="nav-item"><span>Snap do siatki</span><small data-snap-state>10 px</small></button>
         </aside>
@@ -115,58 +115,67 @@ const libraryPlants = [
             </div>
           </div>
 
-          <section class="canvas" aria-label="Plan ogrodu" data-planner-canvas>
+          <section class="canvas" aria-label="Plan ogrodu">
             <div class="planner-scene" data-planner-scene>
               <div class="garden-boundary"></div>
             </div>
-
-            <div class="canvas-help">Przeciągnij roślinę lub rabatę · uchwyt w prawym dolnym rogu zmienia rozmiar rabaty · Delete usuwa zaznaczenie</div>
+            <div class="canvas-help">Przeciągnij roślinę do rabaty · uchwyt zmienia rozmiar rabaty · Delete usuwa zaznaczenie</div>
             <div class="canvas-legend">
-              <span><i class="legend-dot planted"></i>posadzone</span>
+              <span><i class="legend-dot planted"></i>w rabacie</span>
               <span><i class="legend-dot collision"></i>kolizja</span>
-              <span><i class="legend-box"></i>rabata</span>
+              <span><i class="legend-dot outside"></i>poza rabatą</span>
             </div>
           </section>
 
           <section class="bottom-strip">
             <div class="metric"><strong data-kpi-beds>3</strong><span>rabaty i sektory</span></div>
             <div class="metric"><strong data-kpi-plants>6</strong><span>roślin w projekcie</span></div>
-            <div class="metric"><strong>12</strong><span>pozycji do zakupu</span></div>
+            <div class="metric"><strong data-kpi-coverage>0%</strong><span>średnie pokrycie rabat</span></div>
             <div class="metric"><strong data-kpi-collisions>0</strong><span>kolizje do sprawdzenia</span></div>
           </section>
         </main>
 
         <aside class="sidebar right">
           <div class="section-kicker">Inspektor</div>
+
           <div class="panel-card">
             <div class="inspector-heading">
               <h3 data-inspector-title>Hortensja bukietowa</h3>
               <span class="badge" data-inspector-type>roślina</span>
             </div>
-            <div class="property-row"><span>Typ</span><strong data-inspector-kind>roślina</strong></div>
-            <div class="property-row"><span>Pozycja</span><strong data-inspector-position>22 × 25</strong></div>
-            <div class="property-row"><span>Rozstaw</span><strong data-inspector-spacing>90 cm</strong></div>
-            <div class="property-row"><span>Kolizja</span><strong data-inspector-collision>nie</strong></div>
+            <div class="property-row"><span>Przynależność</span><strong data-inspector-bed>—</strong></div>
+            <div class="property-row"><span>Pozycja</span><strong data-inspector-position>—</strong></div>
+            <div class="property-row"><span>Rozstaw</span><strong data-inspector-spacing>—</strong></div>
+            <div class="property-row"><span>Wysokość</span><strong data-inspector-height>—</strong></div>
+          </div>
+
+          <div class="panel-card">
+            <h3>Analiza rabaty</h3>
+            <div class="property-row"><span>Pokrycie</span><strong data-bed-coverage>—</strong></div>
+            <div class="property-row"><span>Niskie piętro</span><strong data-layer-low>—</strong></div>
+            <div class="property-row"><span>Średnie piętro</span><strong data-layer-mid>—</strong></div>
+            <div class="property-row"><span>Wysokie piętro</span><strong data-layer-high>—</strong></div>
+          </div>
+
+          <div class="panel-card">
+            <h3>Sezonowość</h3>
+            <div class="season-row"><span>Wiosna</span><div class="mini-progress"><i data-season-spring></i></div><strong data-season-spring-label>0%</strong></div>
+            <div class="season-row"><span>Lato</span><div class="mini-progress"><i data-season-summer></i></div><strong data-season-summer-label>0%</strong></div>
+            <div class="season-row"><span>Jesień</span><div class="mini-progress"><i data-season-autumn></i></div><strong data-season-autumn-label>0%</strong></div>
+            <div class="season-row"><span>Zima</span><div class="mini-progress"><i data-season-winter></i></div><strong data-season-winter-label>0%</strong></div>
           </div>
 
           <div class="panel-card">
             <h3>Analiza kompozycji</h3>
-            <p data-analysis-copy>Układ jest analizowany na podstawie odległości między roślinami oraz zagęszczenia w rabatach.</p>
+            <p data-analysis-copy>Analiza jest liczona z aktualnego układu.</p>
             <div class="progress"><i data-analysis-progress></i></div>
             <div class="property-row"><span>Ocena układu</span><strong data-analysis-score>100%</strong></div>
           </div>
 
           <div class="panel-card">
-            <h3>Geometria rabaty</h3>
-            <div class="property-row"><span>Szerokość</span><strong data-bed-width>—</strong></div>
-            <div class="property-row"><span>Wysokość</span><strong data-bed-height>—</strong></div>
-            <div class="property-row"><span>Pozycja</span><strong data-bed-position>—</strong></div>
-          </div>
-
-          <div class="panel-card">
             <h3>Do poprawy</h3>
             <p><span class="badge warn" data-collision-badge>0 kolizji</span></p>
-            <p class="panel-note" data-collision-note>Brak konfliktów rozstawu.</p>
+            <p class="panel-note" data-collision-note>Brak konfliktów.</p>
           </div>
         </aside>
       </div>
