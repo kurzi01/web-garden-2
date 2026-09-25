@@ -104,3 +104,50 @@ button,input,select { font:inherit; }
   .planner-body { grid-template-columns:240px minmax(0,1fr); }
   .sidebar.right { display:none; }
 }
+
+
+.plant-dot.outside-bed {
+  box-shadow: 0 0 0 3px rgba(196, 129, 53, .34), 0 8px 18px rgba(120, 86, 45, .16);
+  background: #9a764c;
+}
+
+.legend-dot.outside { background: #9a764c; }
+
+.bed-stats {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  font-size: 10px;
+  color: #5d6f5f;
+  background: rgba(255,255,255,.72);
+  padding: 4px 7px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.season-row {
+  display: grid;
+  grid-template-columns: 58px 1fr 36px;
+  gap: 8px;
+  align-items: center;
+  margin: 9px 0;
+  font-size: 12px;
+}
+
+.season-row > span { color: var(--mg-muted); }
+.season-row > strong { text-align: right; font-size: 11px; }
+
+.mini-progress {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e8ece5;
+}
+
+.mini-progress > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--mg-accent);
+  transition: width 180ms ease;
+}
